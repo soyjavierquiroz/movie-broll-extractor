@@ -1,0 +1,26 @@
+"""Phase 1 CLI."""
+from __future__ import annotations
+import argparse,sys,uuid
+from datetime import datetime,timezone
+from pathlib import Path
+from . import __version__
+from .inspect_source import inspect_movie
+from .srt import parse_srt_file,cue_statistics,validate_timeline
+from .utils import sha256_file,write_json,write_jsonl
+def utc(): return datetime.now(timezone.utc).isoformat().replace("+00:00","Z")
+def main(argv=None):
+ p=argparse.ArgumentParser(prog="movie-broll",description="Manifest-first movie source inspection."); sub=p.add_subparsers(dest="command",required=True); i=sub.add_parser("inspect",help="inspect a movie and synchronized external SRT"); i.add_argument("--movie",required=True);i.add_argument("--srt",required=True);i.add_argument("--run-dir",required=True); a=p.parse_args(argv)
+ movie,srt,run=Path(a.movie),Path(a.srt),Path(a.run_dir)
+ for label,path in (("movie",movie),("SRT",srt)):
+  if not path.is_file(): print(f"error: {label} file does not exist: {path}",file=sys.stderr);return 2
+ if run.exists() and any(run.iterdir()): print(f"error: run directory must be new or empty: {run}",file=sys.stderr);return 2
+ run.mkdir(parents=True,exist_ok=True); started=utc(); run_id="inspect-"+uuid.uuid4().hex[:12]
+ try:
+  md=inspect_movie(movie); parsed=parse_srt_file(srt); stats=cue_statistics(parsed.cues); tv=validate_timeline(parsed.cues,md["duration_seconds"] or 0)
+  if parsed.malformed: tv["warnings"].append(f"{len(parsed.malformed)} malformed SRT cue block(s)"); tv["status"]="WARNING" if tv["status"]=="OK" else tv["status"]
+  manifest={"schema_version":"source_manifest_v1","source":{"movie_id":movie.parent.name,"movie":{**md,"sha256":sha256_file(movie)},"srt":{"filename":srt.name,"absolute_path":str(srt.resolve()),"sha256":sha256_file(srt),"literal_transcription":False,"timing_assumption":"synchronized_external_srt","cue_count":stats["cue_count"],"first_cue_start_seconds":stats["first_cue_start"],"last_cue_end_seconds":stats["last_cue_end"],"statistics":stats}},"validation":{"movie_readable":True,"srt_readable":True,"srt_timeline_status":tv["status"],"warnings":tv["warnings"]+parsed.malformed,"errors":tv["errors"]}}
+  write_json(run/"source_manifest.json",manifest);write_jsonl(run/"srt_cues.jsonl",[x.as_dict() for x in parsed.cues]);write_json(run/"run_manifest.json",{"schema_version":"run_manifest_v1","run_id":run_id,"command":"inspect","started_at":started,"completed_at":utc(),"status":"completed","producer":"movie_broll_extractor","producer_version":__version__,"outputs":{"source_manifest":"source_manifest.json","srt_cues":"srt_cues.jsonl"},"errors":[]})
+  seconds=int(md["duration_seconds"] or 0); video=md["video"]
+  print("[inspect] movie: readable");print(f"[inspect] duration: {seconds//3600:02d}:{seconds%3600//60:02d}:{seconds%60:02d}");print(f"[inspect] video: {video['width']}x{video['height']} @ {video['fps'] or 'unknown'}");print(f"[inspect] audio tracks: {len(md['audio_tracks'])}");print(f"[inspect] srt cues: {len(parsed.cues)}");print(f"[inspect] srt timeline: {tv['status']}");print("[inspect] source_manifest.json: written");print("[inspect] srt_cues.jsonl: written");print("[inspect] status: COMPLETE");return 0
+ except Exception as e:
+  write_json(run/"run_manifest.json",{"schema_version":"run_manifest_v1","run_id":run_id,"command":"inspect","started_at":started,"completed_at":utc(),"status":"failed","producer":"movie_broll_extractor","producer_version":__version__,"outputs":{},"errors":[str(e)]});print(f"error: {e}",file=sys.stderr);return 1

@@ -1,0 +1,31 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Copyrighted source media and subtitles stay local.
+input/**/*.mp4
+input/**/*.mkv
+input/**/*.mov
+input/**/*.avi
+input/**/*.webm
+input/**/*.srt
+input/*.mp4
+input/*.mkv
+input/*.mov
+input/*.avi
+input/*.webm
+input/*.srt
+!input/**/.gitkeep
+
+# Generated working data.
+runs/**
+output/**
+cache/**
+!runs/.gitkeep
+!output/.gitkeep
+!cache/.gitkeep
+*.log
+.env
+.env.*
