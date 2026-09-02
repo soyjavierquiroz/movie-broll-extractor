@@ -2,7 +2,7 @@
 
 Manifest-first tooling for building a small, curated collection of reusable movie B-roll. **SHOT != ASSET**: later phases may group multiple shots into one coherent visual asset.
 
-Phase 1 only performs deterministic source inspection and normalized external-SRT parsing. It does not cut media, call models, score candidates, or export assets.
+Phase 1/2A performs deterministic source inspection, normalized external-SRT parsing, and narrative-mapper interchange preparation. It does not cut media, call models, score candidates, or export assets.
 
 ## Setup and usage
 
@@ -13,6 +13,18 @@ python3.12 -m venv .venv
 ```
 
 `input/` is for local copyrighted sources; `runs/`, `output/`, and `cache/` are generated/local. They are ignored by Git. The command produces `source_manifest.json`, `srt_cues.jsonl`, and `run_manifest.json`.
+
+## Narrative mapper interchange
+
+`SRT → canonical cues → deterministic chunks → external LLM → validation`.
+The extractor owns canonical timeline identity (`SRT_######`), chunk boundaries, and validation; the external LLM interprets narrative only. Prepare manually managed LLM inputs without overwriting existing exchanges:
+
+```bash
+movie-broll narrative prepare --srt-cues runs/romper-el-circulo/source-inspect-v1/srt_cues.jsonl --movie-id romper-el-circulo --output-dir input/romper-el-circulo --window-seconds 600 --overlap-seconds 60
+movie-broll narrative validate --input input/romper-el-circulo/NCHUNK_0001.input.json --map input/romper-el-circulo/NCHUNK_0001.narrative_map.json
+```
+
+Chunks advance by 540 seconds (a 600-second window with 60 seconds overlap). A cue belongs to a chunk when its half-open interval intersects the half-open window; cues are never split. Use `--force` only to replace generated `.input.json` files.
 
 Future phases flow from source inspection to shots, scene/context blocks, visual events, candidates, editorial decisions, and final MP4/JPG plus `asset_metadata_v1` JSON. The schemas directory establishes those contracts now. `asset_metadata_v1` represents independently exported assets in any supported orientation.
 

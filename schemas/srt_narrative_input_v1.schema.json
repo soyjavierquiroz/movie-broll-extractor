@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "srt_narrative_input_v1",
+  "type": "object",
+  "required": ["schema_version", "movie_id", "source", "chunk", "cues"],
+  "properties": {
+    "schema_version": {"const": "srt_narrative_input_v1"},
+    "movie_id": {"type": "string"},
+    "source": {"type": "object", "required": ["type", "literal_transcription", "timing_reliability", "language"], "properties": {"type": {"const": "external_srt"}, "literal_transcription": {"const": false}, "timing_reliability": {"const": "good"}, "language": {"const": "es"}}},
+    "chunk": {"type": "object", "required": ["chunk_id", "start_seconds", "end_seconds", "target_window_seconds", "overlap_seconds"]},
+    "cues": {"type": "array", "items": {"type": "object", "required": ["cue_id", "source_index", "start_seconds", "end_seconds", "text"], "properties": {"cue_id": {"pattern": "^SRT_[0-9]{6}$"}, "source_index": {"type": "integer"}, "start_seconds": {"type": "number"}, "end_seconds": {"type": "number"}, "text": {"type": "string"}}}}
+  }
+}

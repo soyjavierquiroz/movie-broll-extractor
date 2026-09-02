@@ -7,9 +7,29 @@ from . import __version__
 from .inspect_source import inspect_movie
 from .srt import parse_srt_file,cue_statistics,validate_timeline
 from .utils import sha256_file,write_json,write_jsonl
+from .narrative import prepare_narrative_inputs, validate_narrative_map
 def utc(): return datetime.now(timezone.utc).isoformat().replace("+00:00","Z")
 def main(argv=None):
- p=argparse.ArgumentParser(prog="movie-broll",description="Manifest-first movie source inspection."); sub=p.add_subparsers(dest="command",required=True); i=sub.add_parser("inspect",help="inspect a movie and synchronized external SRT"); i.add_argument("--movie",required=True);i.add_argument("--srt",required=True);i.add_argument("--run-dir",required=True); a=p.parse_args(argv)
+ p=argparse.ArgumentParser(prog="movie-broll",description="Manifest-first movie source inspection."); sub=p.add_subparsers(dest="command",required=True); i=sub.add_parser("inspect",help="inspect a movie and synchronized external SRT"); i.add_argument("--movie",required=True);i.add_argument("--srt",required=True);i.add_argument("--run-dir",required=True)
+ n=sub.add_parser("narrative",help="prepare and validate deterministic narrative mapper exchanges"); narrative_sub=n.add_subparsers(dest="narrative_command",required=True)
+ prepare=narrative_sub.add_parser("prepare",help="create deterministic external-LLM input chunks")
+ prepare.add_argument("--srt-cues",required=True); prepare.add_argument("--movie-id",required=True); prepare.add_argument("--output-dir",required=True); prepare.add_argument("--window-seconds",type=float,default=600); prepare.add_argument("--overlap-seconds",type=float,default=60); prepare.add_argument("--force",action="store_true")
+ validate=narrative_sub.add_parser("validate",help="strictly validate one external narrative map")
+ validate.add_argument("--input",required=True); validate.add_argument("--map",required=True)
+ a=p.parse_args(argv)
+ if a.command == "narrative":
+  if a.narrative_command == "prepare":
+   try:
+    paths=prepare_narrative_inputs(Path(a.srt_cues),a.movie_id,Path(a.output_dir),a.window_seconds,a.overlap_seconds,a.force)
+    print(f"[narrative] inputs written: {len(paths)}")
+    return 0
+   except (OSError,ValueError,FileExistsError) as error: print(f"error: {error}",file=sys.stderr); return 2
+  errors=validate_narrative_map(Path(a.input),Path(a.map))
+  if errors:
+   for error in errors: print(f"ERROR: {error}",file=sys.stderr)
+   return 1
+  print("VALID")
+  return 0
  movie,srt,run=Path(a.movie),Path(a.srt),Path(a.run_dir)
  for label,path in (("movie",movie),("SRT",srt)):
   if not path.is_file(): print(f"error: {label} file does not exist: {path}",file=sys.stderr);return 2
