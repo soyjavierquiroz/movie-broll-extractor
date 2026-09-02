@@ -64,7 +64,7 @@ class GeminiNarrativeProvider:
             model=self.model,
             input=json.dumps(chunk_input, ensure_ascii=False, separators=(",", ":")),
             system_instruction=prompt,
-            generation_config={"thinking_level": "MINIMAL"},
+            generation_config={"thinking_level": "minimal"},
             response_format={"type": "text", "mime_type": "application/json", "schema": GEMINI_RESPONSE_SCHEMA},
         )
         data = json.loads(response.output_text)

@@ -27,7 +27,7 @@ def test_gemini_36_uses_interactions_structured_response_and_usage_mapping():
     assert call["model"] == "gemini-3.6-flash"
     assert call["system_instruction"] == "mapper instructions"
     assert json.loads(call["input"])["chunk_id"] == "NCHUNK_0001"
-    assert call["generation_config"] == {"thinking_level": "MINIMAL"}
+    assert call["generation_config"] == {"thinking_level": "minimal"}
     assert "thinking_budget" not in call["generation_config"]
     assert not {"temperature", "top_p", "top_k"} & set(call["generation_config"])
     assert call["response_format"] == {"type": "text", "mime_type": "application/json", "schema": GEMINI_RESPONSE_SCHEMA}
