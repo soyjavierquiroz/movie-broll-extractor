@@ -9,6 +9,7 @@ from .srt import parse_srt_file,cue_statistics,validate_timeline
 from .utils import sha256_file,write_json,write_jsonl
 from .narrative import OVERLAP_SECONDS, TARGET_WINDOW_SECONDS, prepare_narrative_inputs, validate_narrative_map
 from .narrative_runner import run_narrative
+from .narrative_consolidate import consolidate_narrative
 def utc(): return datetime.now(timezone.utc).isoformat().replace("+00:00","Z")
 def main(argv=None):
  p=argparse.ArgumentParser(prog="movie-broll",description="Manifest-first movie source inspection."); sub=p.add_subparsers(dest="command",required=True); i=sub.add_parser("inspect",help="inspect a movie and synchronized external SRT"); i.add_argument("--movie",required=True);i.add_argument("--srt",required=True);i.add_argument("--run-dir",required=True)
@@ -21,6 +22,8 @@ def main(argv=None):
  run.add_argument("input_dir", help="input/<movie-id> directory containing movie.mp4 and subtitles.srt")
  run.add_argument("--model", default="gemini-3.6-flash"); run.add_argument("--force", action="store_true")
  run.add_argument("--max-chunks", type=int, help="limit chunks for development smoke tests")
+ consolidate=narrative_sub.add_parser("consolidate",help="deterministically reconcile validated narrative-v2 chunk maps")
+ consolidate.add_argument("input_dir", help="input/<movie-id> directory associated with the current narrative-v2 run")
  a=p.parse_args(argv)
  if a.command == "narrative":
   if a.narrative_command == "prepare":
@@ -35,6 +38,11 @@ def main(argv=None):
     manifest=run_narrative(Path(a.input_dir),model=a.model,force=a.force,max_chunks=a.max_chunks)
     return 0 if manifest["status"] == "COMPLETE" else 1
    except RuntimeError as error: print(f"ERROR: {error}",file=sys.stderr); return 2
+   except (OSError,ValueError,FileNotFoundError) as error: print(f"error: {error}",file=sys.stderr); return 2
+  if a.narrative_command == "consolidate":
+   try:
+    report=consolidate_narrative(Path(a.input_dir))
+    return 0 if report["status"] == "PASS" else 1
    except (OSError,ValueError,FileNotFoundError) as error: print(f"error: {error}",file=sys.stderr); return 2
   errors=validate_narrative_map(Path(a.input),Path(a.map))
   if errors:

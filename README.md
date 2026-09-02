@@ -24,11 +24,21 @@ movie-broll narrative run input/<movie-id>
 ```
 
 The command automatically inspects source material as needed, creates deterministic
-600-second chunks with 60-second overlap, sends subtitle text/timestamps only to
+1200-second chunks with 90-second overlap, sends subtitle text/timestamps only to
 Gemini 3.6 Flash through the Interactions API, validates every response locally,
 and resumes validated checkpoints under `runs/<movie-id>/narrative-v2/`. Use
 `--max-chunks 1` for a smoke test or
 `--force` for explicit regeneration.
+
+Then consolidate the validated chunk maps without making any external request:
+
+```bash
+movie-broll narrative consolidate input/<movie-id>
+```
+
+The resulting flow is `SRT → Gemini narrative chunks → deterministic overlap
+consolidation → global Narrative Map`. The global map and a reconciliation report
+are written under `runs/<movie-id>/narrative-v2/`.
 
 ## Legacy narrative mapper interchange
 
