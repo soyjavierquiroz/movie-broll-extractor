@@ -16,7 +16,7 @@ def fake_similarity(monkeypatch):
 
 def test_cli_pilot_broll_exists(monkeypatch,tmp_path,capsys):
     import movie_broll.broll_pilot as b
-    monkeypatch.setattr(b,'run_broll_pilot',lambda x:{'window':'SW_02','shots':16,'candidates':8,'KEEP':5,'REVIEW':2,'REJECT':1,'exported':5,'output':tmp_path})
+    monkeypatch.setattr(b,'run_broll_pilot',lambda x:{'window':'SW_02','shots':16,'candidates':8,'KEEP':5,'REVIEW':2,'REJECT':1,'exported':5,'average_keep_duration':7.2,'output':tmp_path})
     assert main(['pilot','broll',str(tmp_path)]) == 0
     assert '[broll-pilot] window: SW_02' in capsys.readouterr().out
 

@@ -142,4 +142,5 @@ def run_broll_pilot(input_dir:Path)->dict[str,Any]:
     if exported: subprocess.run(review_reel_command(exported,reel),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); validations.append(probe(reel,width,height,sum(c['duration_seconds'] for c in items if c['editorial']['decision']=='KEEP')))
     if exported: contact_sheet(Path(paths['movie']),[c for c in items if c['editorial']['decision']=='KEEP'],output/'review_contact_sheet.jpg')
     write_json(output/'export_validation.json',{'schema_version':'broll_pilot_export_validation_v1','exports':validations})
-    return {'window':PILOT_WINDOW,'shots':len(shots),'candidates':len(items),'KEEP':sum(x['editorial']['decision']=='KEEP' for x in items),'REVIEW':sum(x['editorial']['decision']=='REVIEW' for x in items),'REJECT':sum(x['editorial']['decision']=='REJECT' for x in items),'exported':len(exported),'output':output}
+    keep_items=[x for x in items if x['editorial']['decision']=='KEEP']
+    return {'window':PILOT_WINDOW,'shots':len(shots),'candidates':len(items),'KEEP':len(keep_items),'REVIEW':sum(x['editorial']['decision']=='REVIEW' for x in items),'REJECT':sum(x['editorial']['decision']=='REJECT' for x in items),'exported':len(exported),'average_keep_duration':round(sum(x['duration_seconds'] for x in keep_items)/len(keep_items),2) if keep_items else 0.0,'output':output}

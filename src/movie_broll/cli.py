@@ -78,6 +78,7 @@ def main(argv=None):
    from .broll_pilot import run_broll_pilot
    report=run_broll_pilot(Path(a.input_dir)); output=report['output']; print(f"[broll-pilot] window: {report['window']}"); print(f"[broll-pilot] shots: {report['shots']}"); print(f"[broll-pilot] candidates: {report['candidates']}")
    for key in ('KEEP','REVIEW','REJECT','exported'): print(f"[broll-pilot] {key}: {report[key]}")
+   print(f"[broll-pilot] average KEEP duration: {report['average_keep_duration']:.1f}s")
    print(f"[broll-pilot] review reel: {output/'review_reel.mp4'}"); print("[broll-pilot] status: COMPLETE"); return 0
   except (OSError,ValueError,FileNotFoundError,RuntimeError,subprocess.CalledProcessError) as error: print(f"error: {error}",file=sys.stderr); return 2
  movie,srt,run=Path(a.movie),Path(a.srt),Path(a.run_dir)
