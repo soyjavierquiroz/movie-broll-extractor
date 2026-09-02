@@ -2,7 +2,7 @@
 
 Manifest-first tooling for building a small, curated collection of reusable movie B-roll. **SHOT != ASSET**: later phases may group multiple shots into one coherent visual asset.
 
-Phase 1/2A performs deterministic source inspection, normalized external-SRT parsing, and narrative-mapper interchange preparation. It does not cut media, call models, score candidates, or export assets.
+Phase 2B automates the SRT narrative mapper with Gemini. It does not cut media, score candidates, or export assets.
 
 ## Setup and usage
 
@@ -14,7 +14,22 @@ python3.12 -m venv .venv
 
 `input/` is for local copyrighted sources; `runs/`, `output/`, and `cache/` are generated/local. They are ignored by Git. The command produces `source_manifest.json`, `srt_cues.jsonl`, and `run_manifest.json`.
 
-## Narrative mapper interchange
+## Automatic narrative mapper
+
+Put `movie.mp4` and `subtitles.srt` in `input/<movie-id>/`, configure
+`GEMINI_API_KEY` once in the project `.env`, then run:
+
+```bash
+movie-broll narrative run input/<movie-id>
+```
+
+The command automatically inspects source material as needed, creates deterministic
+600-second chunks with 60-second overlap, sends subtitle text/timestamps only to
+Gemini, validates every response locally, and resumes validated checkpoints under
+`runs/<movie-id>/narrative-v1/`. Use `--max-chunks 1` for a smoke test or
+`--force` for explicit regeneration.
+
+## Legacy narrative mapper interchange
 
 `SRT → canonical cues → deterministic chunks → external LLM → validation`.
 The extractor owns canonical timeline identity (`SRT_######`), chunk boundaries, and validation; the external LLM interprets narrative only. Prepare manually managed LLM inputs without overwriting existing exchanges:
