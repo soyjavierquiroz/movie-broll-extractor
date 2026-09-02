@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 import pytest
-from movie_broll.visual import Window, build_shots, choose_threshold, select_smoke_windows, validate_shots
+from movie_broll.visual import Window, _local_peaks, build_shots, choose_threshold, select_smoke_windows, validate_shots
 from movie_broll.cli import main
 
 def seg(identifier,start,end,kind="conversation",function="setup",context="low",density=None):
@@ -22,9 +22,12 @@ def test_shot_frame_semantics_and_validation():
     assert validate_shots(broken,[window],24)["status"]=="FAIL"
     broken=[dict(x) for x in shots]; broken[0]["end_frame_exclusive"]=broken[0]["start_frame"]
     assert validate_shots(broken,[window],24)["status"]=="FAIL"
-def test_threshold_choice_prefers_less_aggressive_tie():
+def test_threshold_choice_is_sensitivity_compromise_not_microshot_minimizer():
     shots={t:build_shots(Window("W",0,10,"",[]),24,[120],t) for t in (20.0,24.0,27.0)}
-    assert choose_threshold(shots)[0]==27.0
+    assert choose_threshold(shots)[0]==24.0
+def test_local_peak_audit_is_deterministic():
+    trace={10:1.0,11:3.0,12:2.0,13:4.0,14:1.0}
+    assert _local_peaks(trace,limit=2)==[(13,4.0),(11,3.0)]
 def test_cli_missing_movie(tmp_path,capsys):
     assert main(["visual","smoke",str(tmp_path)])==2
     assert "movie does not exist" in capsys.readouterr().err

@@ -82,14 +82,57 @@ def validate_shots(shots:list[dict[str,Any]], windows:list[Window],fps:float)->d
     return {"schema_version":"shot_validation_v1","frame_semantics":"start_frame is inclusive; end_frame_exclusive is exclusive","ordering":"PASS" if not any("gap or overlap" in e for e in errors) else "FAIL","gaps":"PASS" if not any("gap or overlap" in e for e in errors) else "FAIL","overlaps":"PASS" if not any("gap or overlap" in e for e in errors) else "FAIL","frame_time_consistency":"PASS" if not any("mismatch" in e for e in errors) else "FAIL","status":"PASS" if not errors else "FAIL","errors":errors}
 
 def choose_threshold(results:dict[float,list[dict[str,Any]]])->tuple[float,str]:
-    # Prefer the least aggressive threshold whose micro-shot fraction remains reasonable; ties go higher.
-    candidates=[]
-    for threshold,shots in results.items():
-        m=metrics(shots); micro=m["count_lt_1_0s"]/m["shot_count"]
-        candidates.append((micro, -threshold, threshold,m))
-    reasonable=[x for x in candidates if x[0] <= .15] or candidates
-    best=min(reasonable,key=lambda x:(x[0],x[1]))
-    return best[2],"deterministic pilot rule: select the least aggressive threshold among profiles with the lowest reasonable (<15%) micro-shot rate; quality over quantity"
+    # A technical shot detector preserves credible boundaries; short shots are evidence, never invalidation.
+    ordered=sorted(results)
+    if len(ordered) < 3: return ordered[len(ordered)//2],"deterministic central threshold from available sweep"
+    return ordered[len(ordered)//2],"deterministic pilot compromise: central sweep threshold balances sensitivity and false-positive risk across heterogeneous smoke windows; short shots are retained as technical boundaries"
+
+def score_trace(movie:Path,start_frame:int,end_frame:int)->dict[int,float]:
+    from scenedetect import ContentDetector, SceneManager, StatsManager, open_video
+    stats=StatsManager(); video=open_video(str(movie)); video.seek(start_frame)
+    manager=SceneManager(stats_manager=stats); manager.add_detector(ContentDetector(threshold=999.0)); manager.detect_scenes(video,end_time=end_frame)
+    return {frame:float(value[0]) for frame in range(start_frame,end_frame) if (value:=stats.get_metrics(frame,["content_val"])) and value[0] is not None}
+
+def _local_peaks(trace:dict[int,float],limit:int=15)->list[tuple[int,float]]:
+    points=sorted(trace.items()); peaks=[(frame,score) for i,(frame,score) in enumerate(points) if score>0 and (i==0 or score>=points[i-1][1]) and (i==len(points)-1 or score>=points[i+1][1])]
+    return sorted(peaks,key=lambda item:(-item[1],item[0]))[:limit]
+
+def boundary_strip(movie:Path,frame:int,score:float,fps:float,output:Path)->None:
+    import cv2
+    cap=cv2.VideoCapture(str(movie)); frames=[]
+    for offset in (-.25,-.05,.05,.25):
+        cap.set(cv2.CAP_PROP_POS_FRAMES,max(0,round(frame+offset*fps))); ok,image=cap.read()
+        if ok: frames.append(cv2.resize(image,(280,117)))
+    cap.release()
+    if len(frames)==4:
+        canvas=cv2.hconcat(frames); cv2.putText(canvas,f"{frame/fps:.3f}s score {score:.2f}",(8,18),cv2.FONT_HERSHEY_SIMPLEX,.5,(255,255,255),1,cv2.LINE_AA); output.parent.mkdir(parents=True,exist_ok=True); cv2.imwrite(str(output),canvas,[cv2.IMWRITE_JPEG_QUALITY,82])
+
+def run_threshold_audit(input_dir:Path)->dict[str,Any]:
+    movie=input_dir/"movie.mp4"; output=input_dir.resolve().parents[1]/"runs"/input_dir.name/"visual-smoke-v1"
+    if not movie.is_file() or not (output/"windows.json").is_file(): raise FileNotFoundError("existing movie and visual-smoke-v1/windows.json are required")
+    source=inspect_movie(movie); fps=float(source["video"]["fps"]); windows=[Window(**x) for x in json.loads((output/"windows.json").read_text())["windows"]]
+    cuts={}; matrix={}
+    for window in windows:
+        start,end=_frame(window.start_seconds,fps),_frame(window.end_seconds,fps); matrix[window.window_id]={}; cuts[window.window_id]={}
+        for threshold in (20.,24.,27.):
+            value=detect_cuts(movie,start,end,threshold); cuts[window.window_id][threshold]=value; matrix[window.window_id][str(int(threshold))]=metrics(build_shots(window,fps,value,threshold))
+    target=windows[2]; start,end=_frame(target.start_seconds,fps),_frame(target.end_seconds,fps); trace=score_trace(movie,start,end)
+    extended={}; target_cuts={}
+    for threshold in (18.,20.,22.,24.,27.):
+        value=detect_cuts(movie,start,end,threshold); target_cuts[threshold]=value; extended[str(int(threshold))]={"boundaries":[{"frame":x,"seconds":_seconds(x,fps),"score":trace.get(x)} for x in value],"metrics":metrics(build_shots(target,fps,value,threshold))}
+    peaks=[{"frame":f,"seconds":_seconds(f,fps),"score":s,"would_trigger":{"18":s>=18,"20":s>=20,"22":s>=22,"24":s>=24,"27":s>=27}} for f,s in _local_peaks(trace)]
+    disagreement=sorted(set(target_cuts[20.])-set(target_cuts[27.]),key=lambda x:(-trace.get(x,0),x))[:12]
+    strips=[]
+    for index,frame in enumerate(disagreement,1):
+        path=output/"threshold_audit"/f"SW_03_boundary_{index:02d}.jpg"; boundary_strip(movie,frame,trace.get(frame,0),fps,path); strips.append(str(path))
+    adaptive={"attempted":False,"shot_count":None,"boundary_seconds":[],"notes":"not run"}
+    try:
+        from scenedetect import AdaptiveDetector, SceneManager, open_video
+        video=open_video(str(movie)); video.seek(start); manager=SceneManager(); manager.add_detector(AdaptiveDetector()); manager.detect_scenes(video,end_time=end); values=[b.get_frames() for _,b in manager.get_scene_list() if start<b.get_frames()<end]; adaptive={"attempted":True,"shot_count":len(values)+1,"boundary_seconds":[_seconds(x,fps) for x in values],"notes":"default AdaptiveDetector, corroboration only"}
+    except Exception as error: adaptive["notes"]=str(error)
+    cls="LIKELY_TRUE_LONG_TAKE" if not target_cuts[20.] and sum(p["would_trigger"]["20"] for p in peaks)==0 and adaptive.get("shot_count",1)<=1 else "THRESHOLD_27_TOO_CONSERVATIVE" if len(target_cuts[20.])-len(target_cuts[27.])>=2 else "INCONCLUSIVE"
+    audit={"schema_version":"threshold_audit_v1","per_window_threshold_matrix":matrix,"sw_03_extended_sweep":extended,"sw_03_score_peaks":peaks,"sw_03_score_counts":{str(t):sum(s>=t for s in trace.values()) for t in (18,20,22,24,27)},"detector_comparison":{"adaptive_detector":adaptive},"sw_03_classification":cls,"old_threshold":27,"new_threshold":24,"decision_reason":"threshold 24 is the central, sensitivity-preserving pilot profile; no minimum-duration filtering is applied","sw_01_sw_02_disagreements":{w.window_id:{"at20_not27":[_seconds(x,fps) for x in sorted(set(cuts[w.window_id][20.])-set(cuts[w.window_id][27.]))],"at24_not27":[_seconds(x,fps) for x in sorted(set(cuts[w.window_id][24.])-set(cuts[w.window_id][27.]))]} for w in windows[:2]},"diagnostic_strips":strips}
+    write_json(output/"threshold_audit.json",audit); return audit
 
 def contact_sheet(movie:Path, shots:list[dict[str,Any]], output:Path)->dict[str,Any]:
     import cv2

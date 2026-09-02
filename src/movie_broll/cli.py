@@ -29,6 +29,8 @@ def main(argv=None):
  smoke.add_argument("input_dir",help="input/<movie-id> directory containing movie.mp4")
  smoke.add_argument("--threshold",type=float,help="debug detector threshold override")
  smoke.add_argument("--window-seconds",type=float,default=60.0,help="debug smoke window duration")
+ audit=visual_sub.add_parser("threshold-audit",help="audit existing smoke windows only")
+ audit.add_argument("input_dir",help="input/<movie-id> directory containing movie.mp4")
  a=p.parse_args(argv)
  if a.command == "narrative":
   if a.narrative_command == "prepare":
@@ -56,6 +58,11 @@ def main(argv=None):
   print("VALID")
   return 0
  if a.command == "visual":
+  if a.visual_command == "threshold-audit":
+   try:
+    from .visual import run_threshold_audit
+    report=run_threshold_audit(Path(a.input_dir)); print(f"[visual threshold-audit] SW_03: {report['sw_03_classification']}"); return 0
+   except (OSError,ValueError,FileNotFoundError,RuntimeError) as error: print(f"error: {error}",file=sys.stderr); return 2
   if a.window_seconds <= 0: print("error: --window-seconds must be positive",file=sys.stderr); return 2
   try:
    from .visual import run_visual_smoke
