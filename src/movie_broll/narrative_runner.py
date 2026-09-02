@@ -15,7 +15,7 @@ from .srt import parse_srt_file
 from .utils import sha256_file, sha256_text, write_json, write_jsonl
 
 PROMPT_VERSION = "srt_narrative_mapper_v2"
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.6-flash"
 MAX_SEMANTIC_ATTEMPTS = 2
 MAX_TRANSIENT_RETRIES = 2
 FREE_TIER_REQUEST_BUDGET = 18
@@ -53,6 +53,20 @@ def _daily_quota(error: Exception) -> bool:
 def _transient(error: Exception) -> bool:
     return _status(error) in (429, 500, 502, 503, 504) or isinstance(error, (TimeoutError, ConnectionError, OSError))
 
+def _error_type(error: Exception) -> str:
+    status = _status(error)
+    if status == 401: return "AUTHENTICATION"
+    if status == 404: return "MODEL_UNAVAILABLE"
+    if status == 429: return "QUOTA_OR_RATE_LIMIT"
+    if status == 503: return "HIGH_DEMAND"
+    if isinstance(error, (TimeoutError, ConnectionError, OSError)): return "TIMEOUT_OR_NETWORK"
+    if isinstance(error, ValueError): return "STRUCTURED_VALIDATION_FAILURE"
+    return "PROVIDER_ERROR"
+
+def _safe_error(error: Exception, api_key: str | None) -> str:
+    message = str(error)
+    return message.replace(api_key, "[REDACTED]") if api_key else message
+
 def run_narrative(input_dir: Path, model: str = DEFAULT_MODEL, force: bool = False, max_chunks: int | None = None, provider: NarrativeProvider | None = None, sleep: Callable[[float], None] = time.sleep, output: Callable[[str], None] = print) -> dict[str, Any]:
     load_dotenv(Path(__file__).resolve().parents[2] / ".env")
     api_key = os.getenv("GEMINI_API_KEY")
@@ -65,17 +79,19 @@ def run_narrative(input_dir: Path, model: str = DEFAULT_MODEL, force: bool = Fal
     prepare_narrative_inputs(cues_path, movie_id, chunks_dir, TARGET_WINDOW_SECONDS, OVERLAP_SECONDS, force=True)
     inputs = sorted(chunks_dir.glob("NCHUNK_*.input.json")); inputs = inputs if max_chunks is None else inputs[:max_chunks]
     active_provider = provider or GeminiNarrativeProvider(api_key, model)
-    pricing_mode = os.getenv("GEMINI_PRICING_MODE", "unknown")
+    # This pilot is intentionally configured for Gemini Free Tier; deployments
+    # with a different billing configuration must override this environment value.
+    pricing_mode = os.getenv("GEMINI_PRICING_MODE", "free_tier")
     budget = FREE_TIER_REQUEST_BUDGET if model == DEFAULT_MODEL and pricing_mode == "free_tier" else None
     started = _utc(); usage = _usage(); completed = reused = requests = retries = 0; failures: list[dict[str, str]] = []; quota_status = "NOT_EXHAUSTED"; stopped_status: str | None = None
     output(f"[narrative] movie: {movie_id}"); output(f"[narrative] provider: {active_provider.identifier}"); output(f"[narrative] model: {model}"); output(f"[narrative] chunks: {len(inputs)}")
     for position, input_path in enumerate(inputs, 1):
         if stopped_status: break
         chunk_id = input_path.name.removesuffix(".input.json"); map_path = maps_dir / f"{chunk_id}.narrative_map.json"; meta_path = maps_dir / f"{chunk_id}.checkpoint.json"
-        expected = {"input_sha256": sha256_file(input_path), "model": model, "prompt_version": PROMPT_VERSION, "prompt_sha256": prompt_hash, "provider": active_provider.identifier}
+        expected = {"input_sha256": sha256_file(input_path), "model": model, "prompt_version": PROMPT_VERSION, "prompt_sha256": prompt_hash, "provider": active_provider.identifier, "narrative_profile": "narrative_v2"}
         if not force and map_path.is_file() and _checkpoint_valid(input_path, map_path, meta_path, expected):
             reused += 1; completed += 1; output(f"[narrative] {position:02d}/{len(inputs):02d} REUSED"); continue
-        chunk_input = json.loads(input_path.read_text(encoding="utf-8")); semantic_attempts = transient_retries = 0; last_error = "unknown failure"
+        chunk_input = json.loads(input_path.read_text(encoding="utf-8")); semantic_attempts = transient_retries = 0; last_error = "unknown failure"; last_error_type = "PROVIDER_ERROR"
         while True:
             if budget is not None and requests >= budget:
                 stopped_status = "REQUEST_BUDGET_EXHAUSTED"; last_error = "request budget exhausted"; failures.append({"chunk_id": chunk_id, "error": last_error}); break
@@ -91,16 +107,16 @@ def run_narrative(input_dir: Path, model: str = DEFAULT_MODEL, force: bool = Fal
                 write_json(map_path, canonical); write_json(meta_path, {**expected, "usage": response.usage, "validated_at": _utc()})
                 completed += 1; output(f"[narrative] {position:02d}/{len(inputs):02d} VALID segments={len(canonical['segments'])}"); break
             except Exception as error:
-                last_error = str(error)
+                last_error = _safe_error(error, api_key); last_error_type = _error_type(error)
                 if _daily_quota(error):
-                    quota_status = "DAILY_QUOTA_EXHAUSTED"; stopped_status = quota_status; failures.append({"chunk_id": chunk_id, "error": last_error}); output(f"[narrative] {position:02d}/{len(inputs):02d} DAILY_QUOTA_EXHAUSTED"); break
+                    quota_status = "DAILY_QUOTA_EXHAUSTED"; stopped_status = quota_status; failures.append({"chunk_id": chunk_id, "error_type": last_error_type, "error": last_error}); output(f"[narrative] {position:02d}/{len(inputs):02d} DAILY_QUOTA_EXHAUSTED"); break
                 semantic_failure = isinstance(error, ValueError) and last_error.startswith("validation:")
                 if semantic_failure and semantic_attempts < MAX_SEMANTIC_ATTEMPTS:
                     retries += 1; output(f"[narrative] {position:02d}/{len(inputs):02d} SEMANTIC_RETRY"); continue
                 if _transient(error) and transient_retries < MAX_TRANSIENT_RETRIES:
                     transient_retries += 1; retries += 1; sleep(min(20.0, 2.0 * (2 ** (transient_retries - 1))) + random.uniform(0, .25)); output(f"[narrative] {position:02d}/{len(inputs):02d} TRANSIENT_RETRY"); continue
-                failures.append({"chunk_id": chunk_id, "error": last_error}); output(f"[narrative] {position:02d}/{len(inputs):02d} FAILED"); break
+                failures.append({"chunk_id": chunk_id, "error_type": last_error_type, "error": last_error}); output(f"[narrative] {position:02d}/{len(inputs):02d} FAILED"); break
     status = stopped_status or ("COMPLETE" if not failures else "PARTIAL")
-    manifest = {"schema_version": "narrative_run_v2", "narrative_profile": "narrative_v2", "movie_id": movie_id, "provider": active_provider.identifier, "model": model, "prompt_version": PROMPT_VERSION, "prompt_sha256": prompt_hash, "window_seconds": TARGET_WINDOW_SECONDS, "overlap_seconds": OVERLAP_SECONDS, "started_at": started, "completed_at": _utc(), "status": status, "chunk_count": len(inputs), "valid_chunks": completed, "completed_chunks": completed, "reused_chunks": reused, "failed_chunks": [item["chunk_id"] for item in failures], "request_budget": budget, "requests": requests, "retries": retries, "quota_status": quota_status, "usage": usage, "pricing_mode": pricing_mode, "errors": failures}
+    manifest = {"schema_version": "narrative_run_v2", "narrative_profile": "narrative_v2", "movie_id": movie_id, "provider": active_provider.identifier, "model": model, "prompt_version": PROMPT_VERSION, "prompt_sha256": prompt_hash, "window_seconds": TARGET_WINDOW_SECONDS, "overlap_seconds": OVERLAP_SECONDS, "started_at": started, "completed_at": _utc(), "status": status, "chunk_count": len(inputs), "valid_chunks": completed, "completed_chunks": completed, "reused_chunks": reused, "failed_chunks": [item["chunk_id"] for item in failures], "safety_request_budget": budget, "requests": requests, "retries": retries, "quota_status": quota_status, "usage": usage, "pricing_mode": pricing_mode, "errors": failures}
     manifest["api_cost_estimate_usd"] = "0.00" if pricing_mode == "free_tier" else "unknown"; write_json(run_dir / "narrative_run.json", manifest)
     output(f"[narrative] requests={requests} retries={retries}"); output(f"[narrative] status={status}"); return manifest

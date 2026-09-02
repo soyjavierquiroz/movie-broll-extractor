@@ -25,8 +25,9 @@ movie-broll narrative run input/<movie-id>
 
 The command automatically inspects source material as needed, creates deterministic
 600-second chunks with 60-second overlap, sends subtitle text/timestamps only to
-Gemini, validates every response locally, and resumes validated checkpoints under
-`runs/<movie-id>/narrative-v1/`. Use `--max-chunks 1` for a smoke test or
+Gemini 3.6 Flash through the Interactions API, validates every response locally,
+and resumes validated checkpoints under `runs/<movie-id>/narrative-v2/`. Use
+`--max-chunks 1` for a smoke test or
 `--force` for explicit regeneration.
 
 ## Legacy narrative mapper interchange

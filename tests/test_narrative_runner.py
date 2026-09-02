@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from movie_broll.narrative_provider import ProviderResponse
-from movie_broll.narrative_runner import FREE_TIER_REQUEST_BUDGET, run_narrative
+from movie_broll.narrative_runner import DEFAULT_MODEL, FREE_TIER_REQUEST_BUDGET, run_narrative
 from movie_broll.srt import Cue
 
 
@@ -13,7 +13,7 @@ def _response(data):
 
 
 class FakeProvider:
-    identifier = "gemini"; model = "gemini-2.5-flash"
+    identifier = "gemini"; model = "gemini-3.6-flash"
     def __init__(self, failures=0, invalid=False): self.calls = 0; self.failures = failures; self.invalid = invalid
     def generate(self, prompt, chunk_input):
         self.calls += 1
@@ -47,7 +47,7 @@ def test_missing_key_fails_before_requests(prepared, monkeypatch):
 def test_success_reuse_and_usage(prepared):
     provider = FakeProvider(); first = run_narrative(prepared, provider=provider, max_chunks=1, output=lambda _: None); second = run_narrative(prepared, provider=provider, max_chunks=1, output=lambda _: None)
     assert (first["requests"], first["usage"]["total_tokens"], provider.calls) == (1, 7, 1)
-    assert second["reused_chunks"] == 1 and second["requests"] == 0 and first["request_budget"] == FREE_TIER_REQUEST_BUDGET
+    assert second["reused_chunks"] == 1 and second["requests"] == 0 and first["safety_request_budget"] == FREE_TIER_REQUEST_BUDGET
 
 
 def test_semantic_failure_retries_once(prepared):
@@ -59,7 +59,7 @@ def test_semantic_failure_retries_once(prepared):
 def test_503_is_bounded_and_checkpoint_invalidation(prepared):
     transient = FakeProvider(failures=1); manifest = run_narrative(prepared, provider=transient, max_chunks=1, sleep=lambda _: None, output=lambda _: None)
     assert manifest["status"] == "COMPLETE" and manifest["requests"] == 2 and manifest["retries"] == 1
-    changed_model = FakeProvider(); run_narrative(prepared, provider=changed_model, model="other", max_chunks=1, output=lambda _: None); assert changed_model.calls == 1
+    changed_model = FakeProvider(); run_narrative(prepared, provider=changed_model, model="gemini-2.5-flash", max_chunks=1, output=lambda _: None); assert changed_model.calls == 1
 
     class UnavailableProvider(FakeProvider):
         def generate(self, prompt, chunk_input): self.calls += 1; raise HttpError(503, "high demand")
@@ -72,9 +72,25 @@ def test_daily_quota_stops_without_retry(prepared):
         def generate(self, prompt, chunk_input): self.calls += 1; raise HttpError(429, "GenerateRequestsPerDayPerProjectPerModel-FreeTier")
     provider = QuotaProvider(); manifest = run_narrative(prepared, provider=provider, sleep=lambda _: None, output=lambda _: None)
     assert manifest["status"] == "DAILY_QUOTA_EXHAUSTED" and manifest["quota_status"] == "DAILY_QUOTA_EXHAUSTED" and provider.calls == 1
+    assert manifest["errors"][0]["error_type"] == "QUOTA_OR_RATE_LIMIT"
+
+
+def test_404_model_unavailable_fails_without_retry_and_redacts_key(prepared, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "secret-test-key")
+    class UnavailableProvider(FakeProvider):
+        def generate(self, prompt, chunk_input): self.calls += 1; raise HttpError(404, "model unavailable: secret-test-key")
+    provider = UnavailableProvider()
+    manifest = run_narrative(prepared, provider=provider, force=True, max_chunks=1, sleep=lambda _: None, output=lambda _: None)
+    assert manifest["status"] == "PARTIAL" and manifest["requests"] == 1 and manifest["retries"] == 0
+    assert manifest["errors"][0]["error_type"] == "MODEL_UNAVAILABLE"
+    assert "secret-test-key" not in manifest["errors"][0]["error"]
 
 
 def test_request_budget_stops_cleanly(prepared, monkeypatch):
     monkeypatch.setattr("movie_broll.narrative_runner.FREE_TIER_REQUEST_BUDGET", 1)
     manifest = run_narrative(prepared, provider=FakeProvider(invalid=True), max_chunks=1, sleep=lambda _: None, output=lambda _: None)
     assert manifest["status"] == "REQUEST_BUDGET_EXHAUSTED" and manifest["requests"] == 1
+
+
+def test_gemini_36_is_default():
+    assert DEFAULT_MODEL == "gemini-3.6-flash"
