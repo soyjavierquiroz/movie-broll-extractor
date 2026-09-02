@@ -1,6 +1,6 @@
 """Phase 1 CLI."""
 from __future__ import annotations
-import argparse,sys,uuid
+import argparse,sys,uuid,subprocess
 from datetime import datetime,timezone
 from pathlib import Path
 from . import __version__
@@ -31,6 +31,10 @@ def main(argv=None):
  smoke.add_argument("--window-seconds",type=float,default=60.0,help="debug smoke window duration")
  audit=visual_sub.add_parser("threshold-audit",help="audit existing smoke windows only")
  audit.add_argument("input_dir",help="input/<movie-id> directory containing movie.mp4")
+ pilot=sub.add_parser("pilot",help="run bounded evaluation pilots")
+ pilot_sub=pilot.add_subparsers(dest="pilot_command",required=True)
+ broll=pilot_sub.add_parser("broll",help="create B-roll candidates from the persisted SW_02 smoke window")
+ broll.add_argument("input_dir",help="input/<movie-id> directory")
  a=p.parse_args(argv)
  if a.command == "narrative":
   if a.narrative_command == "prepare":
@@ -69,6 +73,13 @@ def main(argv=None):
    manifest=run_visual_smoke(Path(a.input_dir),a.threshold,a.window_seconds)
    print(f"[visual smoke] status: {manifest['status']}; shots: {manifest['shot_count']}"); return 0 if manifest['status']=="COMPLETE" else 1
   except (OSError,ValueError,FileNotFoundError,RuntimeError) as error: print(f"error: {error}",file=sys.stderr); return 2
+ if a.command == "pilot":
+  try:
+   from .broll_pilot import run_broll_pilot
+   report=run_broll_pilot(Path(a.input_dir)); output=report['output']; print(f"[broll-pilot] window: {report['window']}"); print(f"[broll-pilot] shots: {report['shots']}"); print(f"[broll-pilot] candidates: {report['candidates']}")
+   for key in ('KEEP','REVIEW','REJECT','exported'): print(f"[broll-pilot] {key}: {report[key]}")
+   print(f"[broll-pilot] review reel: {output/'review_reel.mp4'}"); print("[broll-pilot] status: COMPLETE"); return 0
+  except (OSError,ValueError,FileNotFoundError,RuntimeError,subprocess.CalledProcessError) as error: print(f"error: {error}",file=sys.stderr); return 2
  movie,srt,run=Path(a.movie),Path(a.srt),Path(a.run_dir)
  for label,path in (("movie",movie),("SRT",srt)):
   if not path.is_file(): print(f"error: {label} file does not exist: {path}",file=sys.stderr);return 2
