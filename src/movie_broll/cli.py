@@ -24,6 +24,11 @@ def main(argv=None):
  run.add_argument("--max-chunks", type=int, help="limit chunks for development smoke tests")
  consolidate=narrative_sub.add_parser("consolidate",help="deterministically reconcile validated narrative-v2 chunk maps")
  consolidate.add_argument("input_dir", help="input/<movie-id> directory associated with the current narrative-v2 run")
+ v=sub.add_parser("visual",help="technical visual analysis"); visual_sub=v.add_subparsers(dest="visual_command",required=True)
+ smoke=visual_sub.add_parser("smoke",help="run representative technical shot-detection smoke windows")
+ smoke.add_argument("input_dir",help="input/<movie-id> directory containing movie.mp4")
+ smoke.add_argument("--threshold",type=float,help="debug detector threshold override")
+ smoke.add_argument("--window-seconds",type=float,default=60.0,help="debug smoke window duration")
  a=p.parse_args(argv)
  if a.command == "narrative":
   if a.narrative_command == "prepare":
@@ -50,6 +55,13 @@ def main(argv=None):
    return 1
   print("VALID")
   return 0
+ if a.command == "visual":
+  if a.window_seconds <= 0: print("error: --window-seconds must be positive",file=sys.stderr); return 2
+  try:
+   from .visual import run_visual_smoke
+   manifest=run_visual_smoke(Path(a.input_dir),a.threshold,a.window_seconds)
+   print(f"[visual smoke] status: {manifest['status']}; shots: {manifest['shot_count']}"); return 0 if manifest['status']=="COMPLETE" else 1
+  except (OSError,ValueError,FileNotFoundError,RuntimeError) as error: print(f"error: {error}",file=sys.stderr); return 2
  movie,srt,run=Path(a.movie),Path(a.srt),Path(a.run_dir)
  for label,path in (("movie",movie),("SRT",srt)):
   if not path.is_file(): print(f"error: {label} file does not exist: {path}",file=sys.stderr);return 2
