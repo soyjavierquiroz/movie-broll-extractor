@@ -7,14 +7,14 @@ from . import __version__
 from .inspect_source import inspect_movie
 from .srt import parse_srt_file,cue_statistics,validate_timeline
 from .utils import sha256_file,write_json,write_jsonl
-from .narrative import prepare_narrative_inputs, validate_narrative_map
+from .narrative import OVERLAP_SECONDS, TARGET_WINDOW_SECONDS, prepare_narrative_inputs, validate_narrative_map
 from .narrative_runner import run_narrative
 def utc(): return datetime.now(timezone.utc).isoformat().replace("+00:00","Z")
 def main(argv=None):
  p=argparse.ArgumentParser(prog="movie-broll",description="Manifest-first movie source inspection."); sub=p.add_subparsers(dest="command",required=True); i=sub.add_parser("inspect",help="inspect a movie and synchronized external SRT"); i.add_argument("--movie",required=True);i.add_argument("--srt",required=True);i.add_argument("--run-dir",required=True)
  n=sub.add_parser("narrative",help="prepare and validate deterministic narrative mapper exchanges"); narrative_sub=n.add_subparsers(dest="narrative_command",required=True)
  prepare=narrative_sub.add_parser("prepare",help="create deterministic external-LLM input chunks")
- prepare.add_argument("--srt-cues",required=True); prepare.add_argument("--movie-id",required=True); prepare.add_argument("--output-dir",required=True); prepare.add_argument("--window-seconds",type=float,default=600); prepare.add_argument("--overlap-seconds",type=float,default=60); prepare.add_argument("--force",action="store_true")
+ prepare.add_argument("--srt-cues",required=True); prepare.add_argument("--movie-id",required=True); prepare.add_argument("--output-dir",required=True); prepare.add_argument("--window-seconds",type=float,default=TARGET_WINDOW_SECONDS); prepare.add_argument("--overlap-seconds",type=float,default=OVERLAP_SECONDS); prepare.add_argument("--force",action="store_true")
  validate=narrative_sub.add_parser("validate",help="strictly validate one external narrative map")
  validate.add_argument("--input",required=True); validate.add_argument("--map",required=True)
  run=narrative_sub.add_parser("run",help="automatically map SRT narrative chunks with Gemini")

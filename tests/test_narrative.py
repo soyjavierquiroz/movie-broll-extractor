@@ -1,6 +1,7 @@
 import json
 
-from movie_broll.narrative import clean_llm_text, chunk_cues, prepare_narrative_inputs, validate_narrative_map
+from movie_broll.narrative import clean_llm_text, chunk_cues, normalize_llm_v2_response, prepare_narrative_inputs, validate_llm_v2_response, validate_narrative_map
+from movie_broll.narrative_provider import GEMINI_RESPONSE_SCHEMA
 from movie_broll.srt import Cue
 
 
@@ -20,6 +21,48 @@ def test_chunking_windows_overlap_crossing_and_final_partial():
     assert [item.cue_id for item in chunks[0].cues] == ["SRT_000001", "SRT_000002"]
     assert [item.cue_id for item in chunks[1].cues] == ["SRT_000002", "SRT_000003"]
     assert [item.cue_id for item in chunks[2].cues] == ["SRT_000004"]
+
+
+def test_v2_chunking_defaults_and_final_partial():
+    chunks = chunk_cues([cue(1, 1, 2), cue(2, 1199, 1201), cue(3, 2310, 2312)])
+    assert [(item.start_seconds, item.end_seconds) for item in chunks] == [(0.0, 1200.0), (1110.0, 2310.0), (2220.0, 2312.0)]
+
+
+def semantic_response(input_data):
+    return {"schema_version": "narrative_mapper_llm_v2", "chunk_summary_es": "Resumen.", "segments": [{"first_cue_id": "SRT_000001", "last_cue_id": "SRT_000002", "segment_type": "conversation", "narrative_summary_es": "Conversan.", "narrative_tone": "serious", "narrative_function": "conversation", "context_dependency": "medium", "continuity_previous": "unknown", "continuity_next": "outside_chunk", "possible_visual_opportunities": ["conversation", "reaction"]}]}
+
+
+def test_v2_schema_enums_and_local_normalization(tmp_path):
+    cues = [cue(1, 1, 2), cue(2, 8, 10), cue(3, 11, 12)]
+    source = tmp_path / "cues.jsonl"; source.write_text("".join(json.dumps(item.as_dict()) + "\n" for item in cues), encoding="utf-8")
+    input_data = json.loads(prepare_narrative_inputs(source, "pilot", tmp_path / "exchange")[0].read_text())
+    semantic = semantic_response(input_data)
+    assert validate_llm_v2_response(input_data, semantic) == []
+    canonical = normalize_llm_v2_response(input_data, semantic)
+    segment = canonical["segments"][0]
+    assert segment["segment_id"] == "NARR_0001_001" and segment["cue_ids"] == ["SRT_000001", "SRT_000002"]
+    assert (segment["start_seconds"], segment["end_seconds"], segment["dialogue_density"]["source"]) == (1, 10, "derived_timeline")
+    for field, expected in (("segment_type", {"conversation", "unknown"}), ("narrative_tone", {"serious", "unclear"}), ("narrative_function", {"conflict", "unknown"}), ("context_dependency", {"low", "high"}), ("continuity_previous", {"same_interaction", "unknown"})):
+        schema = GEMINI_RESPONSE_SCHEMA["properties"]["segments"]["items"]["properties"][field]
+        assert "enum" in schema and expected <= set(schema["enum"])
+    visual = GEMINI_RESPONSE_SCHEMA["properties"]["segments"]["items"]["properties"]["possible_visual_opportunities"]["items"]
+    assert "enum" in visual and {"conversation", "unknown"} <= set(visual["enum"])
+
+
+def test_v2_rejects_bad_ranges(tmp_path):
+    cues = [cue(1, 1, 2), cue(2, 3, 4), cue(3, 5, 6)]
+    source = tmp_path / "cues.jsonl"; source.write_text("".join(json.dumps(item.as_dict()) + "\n" for item in cues), encoding="utf-8")
+    input_data = json.loads(prepare_narrative_inputs(source, "pilot", tmp_path / "exchange")[0].read_text())
+    bad = semantic_response(input_data); bad["segments"][0]["first_cue_id"] = "SRT_999999"
+    assert any("first_cue_id" in value for value in validate_llm_v2_response(input_data, bad))
+    bad = semantic_response(input_data); bad["segments"][0]["last_cue_id"] = "SRT_999999"
+    assert any("last_cue_id" in value for value in validate_llm_v2_response(input_data, bad))
+    bad = semantic_response(input_data); bad["segments"][0]["first_cue_id"], bad["segments"][0]["last_cue_id"] = "SRT_000003", "SRT_000001"
+    assert any("reversed" in value for value in validate_llm_v2_response(input_data, bad))
+    bad = semantic_response(input_data); extra = dict(bad["segments"][0]); extra["first_cue_id"] = "SRT_000002"; extra["last_cue_id"] = "SRT_000003"; bad["segments"].append(extra)
+    assert any("overlaps" in value for value in validate_llm_v2_response(input_data, bad))
+    bad = semantic_response(input_data); bad["segments"][0]["first_cue_id"] = "SRT_000003"; bad["segments"][0]["last_cue_id"] = "SRT_000003"; extra = semantic_response(input_data)["segments"][0]; bad["segments"].append(extra)
+    assert any("timeline order" in value for value in validate_llm_v2_response(input_data, bad))
 
 
 def valid_map(input_data):

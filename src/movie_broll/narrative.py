@@ -13,8 +13,8 @@ from .utils import write_json
 
 SCHEMA_VERSION = "srt_narrative_input_v1"
 MAP_SCHEMA_VERSION = "narrative_map_chunk_v1"
-TARGET_WINDOW_SECONDS = 600
-OVERLAP_SECONDS = 60
+TARGET_WINDOW_SECONDS = 1200
+OVERLAP_SECONDS = 90
 _PRESENTATION_TAG = re.compile(r"</?(?:b|i|u|s|strike|font)(?:\s+[^>]*)?>", re.IGNORECASE)
 _WHITESPACE = re.compile(r"\s+")
 
@@ -28,6 +28,7 @@ ENUMS = {
     "possible_visual_opportunities": {"conversation", "listening", "reaction", "pause", "gesture", "movement", "object_interaction", "physical_interaction", "establishing", "transition", "unknown"},
 }
 _VISUAL_FACT_KEYS = {"people_count", "setting", "visible_emotions", "visual_summary", "objects", "visual_actions"}
+LLM_V2_SCHEMA_VERSION = "narrative_mapper_llm_v2"
 
 
 def clean_llm_text(text: str) -> str:
@@ -109,6 +110,102 @@ def prepare_narrative_inputs(cues_path: Path, movie_id: str, output_dir: Path, w
     for chunk, path in zip(chunks, paths):
         write_json(path, narrative_input(movie_id, chunk, window_seconds, overlap_seconds))
     return paths
+
+
+def validate_llm_v2_response(chunk_input: dict[str, Any], response: Any) -> list[str]:
+    """Validate Gemini's deliberately small semantic-only response contract."""
+    errors: list[str] = []
+    if not isinstance(response, dict):
+        return ["response root must be an object"]
+    if response.get("schema_version") != LLM_V2_SCHEMA_VERSION:
+        errors.append(f"schema_version must be {LLM_V2_SCHEMA_VERSION}")
+    summary = response.get("chunk_summary_es")
+    if not isinstance(summary, str) or not summary.strip():
+        errors.append("chunk_summary_es must be a non-empty string")
+    cues = chunk_input.get("cues", [])
+    positions = {cue.get("cue_id"): index for index, cue in enumerate(cues) if isinstance(cue, dict)}
+    segments = response.get("segments")
+    if not isinstance(segments, list):
+        return errors + ["segments must be an array"]
+    prior_end = -1
+    for index, segment in enumerate(segments, 1):
+        label = f"segment {index}"
+        if not isinstance(segment, dict):
+            errors.append(f"{label} must be an object")
+            continue
+        first, last = segment.get("first_cue_id"), segment.get("last_cue_id")
+        if first not in positions:
+            errors.append(f"{label} first_cue_id references unknown cue {first}")
+            continue
+        if last not in positions:
+            errors.append(f"{label} last_cue_id references unknown cue {last}")
+            continue
+        first_position, last_position = positions[first], positions[last]
+        if first_position > last_position:
+            errors.append(f"{label} cue range is reversed")
+        if first_position <= prior_end:
+            errors.append(f"{label} cue range overlaps or is out of timeline order")
+        prior_end = max(prior_end, last_position)
+        for field in ("segment_type", "narrative_tone", "narrative_function", "context_dependency"):
+            if segment.get(field) not in ENUMS[field]:
+                errors.append(f"{label} {field} is not an allowed enum")
+        for field in ("narrative_summary_es",):
+            if not isinstance(segment.get(field), str) or not segment[field].strip():
+                errors.append(f"{label} {field} must be a non-empty string")
+        for field in ("continuity_previous", "continuity_next"):
+            if segment.get(field) not in ENUMS["continuity"]:
+                errors.append(f"{label} {field} is not an allowed enum")
+        opportunities = segment.get("possible_visual_opportunities")
+        if not isinstance(opportunities, list):
+            errors.append(f"{label} possible_visual_opportunities must be an array")
+        elif any(value not in ENUMS["possible_visual_opportunities"] for value in opportunities):
+            errors.append(f"{label} possible_visual_opportunities contains an invalid enum")
+    return errors
+
+
+def _dialogue_density(cues: list[dict[str, Any]]) -> str:
+    """Subtitle occupancy heuristic: cue-covered seconds / enclosing segment span."""
+    if not cues:
+        return "none"
+    start, end = float(cues[0]["start_seconds"]), float(cues[-1]["end_seconds"])
+    span = max(end - start, 0.001)
+    occupancy = sum(max(0.0, float(cue["end_seconds"]) - float(cue["start_seconds"])) for cue in cues) / span
+    if occupancy < .10: return "low"
+    if occupancy < .35: return "medium"
+    return "high"
+
+
+def normalize_llm_v2_response(chunk_input: dict[str, Any], response: dict[str, Any]) -> dict[str, Any]:
+    """Expand validated semantic ranges into the immutable canonical map contract."""
+    errors = validate_llm_v2_response(chunk_input, response)
+    if errors:
+        raise ValueError("validation: " + "; ".join(errors[:3]))
+    cues = chunk_input["cues"]
+    positions = {cue["cue_id"]: index for index, cue in enumerate(cues)}
+    assertion = lambda value: {"value": value, "source": "srt_llm", "confidence": .5}
+    hint = lambda value: {"value": value, "source": "srt_llm_hint", "confidence": .5}
+    suffix = chunk_input["chunk"]["chunk_id"].removeprefix("NCHUNK_")
+    segments = []
+    for index, semantic in enumerate(response["segments"], 1):
+        selected = cues[positions[semantic["first_cue_id"]]:positions[semantic["last_cue_id"]] + 1]
+        segments.append({
+            "segment_id": f"NARR_{suffix}_{index:03d}",
+            "start_seconds": selected[0]["start_seconds"], "end_seconds": selected[-1]["end_seconds"],
+            "cue_ids": [cue["cue_id"] for cue in selected],
+            "segment_type": assertion(semantic["segment_type"]),
+            "narrative_summary": assertion(semantic["narrative_summary_es"]),
+            "dialogue_density": {"value": _dialogue_density(selected), "source": "derived_timeline", "confidence": 1.0},
+            "narrative_tone": assertion(semantic["narrative_tone"]),
+            "narrative_function": assertion(semantic["narrative_function"]),
+            "continuity": {"previous": semantic["continuity_previous"], "next": semantic["continuity_next"]},
+            "possible_visual_opportunities": [hint(value) for value in semantic["possible_visual_opportunities"]],
+            "context_dependency": assertion(semantic["context_dependency"]),
+            "boundary": {"start_confidence": .5, "end_confidence": .5},
+        })
+    return {"schema_version": MAP_SCHEMA_VERSION, "movie_id": chunk_input["movie_id"],
+            "chunk": {key: chunk_input["chunk"][key] for key in ("chunk_id", "start_seconds", "end_seconds")},
+            "source": {"type": "external_srt", "literal_transcription": False},
+            "chunk_summary": assertion(response["chunk_summary_es"]), "segments": segments}
 
 
 def _number(value: Any, label: str, errors: list[str]) -> float | None:
@@ -208,8 +305,10 @@ def validate_narrative_map(input_path: Path, map_path: Path) -> list[str]:
             prior = cue_positions[cue_id]
         if cue_ids and cue_ids[0] in cue_by_id: _assert_close(segment.get("start_seconds"), cue_by_id[cue_ids[0]].get("start_seconds"), f"segment {segment_id}.start_seconds", errors)
         if cue_ids and cue_ids[-1] in cue_by_id: _assert_close(segment.get("end_seconds"), cue_by_id[cue_ids[-1]].get("end_seconds"), f"segment {segment_id}.end_seconds", errors)
-        for field in ("segment_type", "dialogue_density", "narrative_tone", "narrative_function", "context_dependency"):
+        for field in ("segment_type", "narrative_tone", "narrative_function", "context_dependency"):
             _check_assertion(segment.get(field), f"segment {segment_id}.{field}", ENUMS[field], "srt_llm", errors)
+        density_source = segment.get("dialogue_density", {}).get("source") if isinstance(segment.get("dialogue_density"), dict) else None
+        _check_assertion(segment.get("dialogue_density"), f"segment {segment_id}.dialogue_density", ENUMS["dialogue_density"], density_source if density_source in {"srt_llm", "derived_timeline"} else "derived_timeline", errors)
         _check_assertion(segment.get("narrative_summary"), f"segment {segment_id}.narrative_summary", None, "srt_llm", errors)
         continuity = segment.get("continuity")
         if not isinstance(continuity, dict): errors.append(f"segment {segment_id}.continuity must be an object")
