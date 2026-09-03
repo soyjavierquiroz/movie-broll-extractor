@@ -36,6 +36,9 @@ def main(argv=None):
  broll=pilot_sub.add_parser("broll",help="create B-roll candidates from a persisted visual smoke window")
  broll.add_argument("input_dir",help="input/<movie-id> directory")
  broll.add_argument("--window",default="SW_02",metavar="WINDOW",help="persisted visual smoke window ID (default: SW_02)")
+ finalize=pilot_sub.add_parser("finalize",help="finalize semantic KEEP assets into the flat production library")
+ finalize.add_argument("input_dir",help="input/<movie-id> directory")
+ finalize.add_argument("--window",default="SW_02",metavar="WINDOW",help="existing pilot window ID")
  select_next=pilot_sub.add_parser("select-next",help="select the next diverse narrative pilot window")
  select_next.add_argument("input_dir",help="input/<movie-id> directory")
  a=p.parse_args(argv)
@@ -78,6 +81,13 @@ def main(argv=None):
   except (OSError,ValueError,FileNotFoundError,RuntimeError) as error: print(f"error: {error}",file=sys.stderr); return 2
  if a.command == "pilot":
   try:
+   if a.pilot_command == "finalize":
+    from .finalization import finalize_pilot
+    report=finalize_pilot(Path(a.input_dir),a.window)
+    print(f"[pilot-finalize] assets: {report['completed']}; review: {report['review']}; reused: {report['reused']}")
+    print(f"[pilot-finalize] directory: {report['assets']}")
+    print("[pilot-finalize] status: COMPLETE")
+    return 0
    if a.pilot_command == "select-next":
     from .pilot_selector import select_next as choose_pilot_window
     window=choose_pilot_window(Path(a.input_dir))

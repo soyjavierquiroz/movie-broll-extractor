@@ -76,6 +76,10 @@ class ProcessingLedger:
         record["stages"].setdefault("semantic", {"status": "PENDING"})
         record["stages"].setdefault("export", {"status": "PENDING"})
         record["stages"].setdefault("validation", {"status": "PENDING"})
+        for name in ("horizontal_export", "horizontal_validation", "vertical_reframe",
+                     "vertical_validation", "horizontal_thumbnail", "vertical_thumbnail",
+                     "metadata", "cleanup", "finalization"):
+            record["stages"].setdefault(name, {"status": "PENDING"})
         self.save()
         return record
 
