@@ -1,12 +1,13 @@
-"""Deterministic, local-only single-window B-roll pilot (not final assets)."""
+"""Single-window B-roll pilot: technical candidates, semantics, exact exports."""
 from __future__ import annotations
-import json, math, subprocess
+import json, math, os, subprocess
 from pathlib import Path
 from typing import Any
 import cv2
 import numpy as np
 from .srt import parse_srt_file
 from .utils import write_json
+from .broll_semantics import GeminiBrollSemanticProvider, PROMPT as SEMANTIC_PROMPT, SemanticProvider, validate_response
 
 PILOT_WINDOW="SW_02"; SAMPLE_FPS=3.0; KEEP=70; REVIEW=50; KEEP_CAP=8
 
@@ -90,8 +91,8 @@ def candidates(shots:list[dict[str,Any]])->list[dict[str,Any]]:
     result=[]
     for group in generate_groups(shots):
         part=[shots[i] for i in group]; a,b=float(part[0]['start_seconds']),float(part[-1]['end_seconds']); signals={'brightness':float(np.mean([x['brightness_mean'] for x in part])),'sharpness':float(np.mean([x['sharpness_score'] for x in part])),'motion':float(np.mean([x['motion_score'] for x in part])),'near_black_fraction':float(np.mean([x['near_black_fraction'] for x in part])),'subtitle_occupancy':float(np.mean([x['subtitle_occupancy_ratio'] for x in part])),'visual_continuity':float(np.mean([_similarity(x,y) for x,y in zip(part,part[1:])])) if len(part)>1 else 1.}
-        c={'start_seconds':_num(a),'end_seconds':_num(b),'duration_seconds':_num(b-a),'source_shot_ids':[x['shot_id'] for x in part],'narrative_segment_ids':list(dict.fromkeys(y for x in part for y in x['narrative_segment_ids'])),'signals':{k:_num(v) for k,v in signals.items()}}
-        c['score']=score_candidate(c); c['editorial']={'decision':'KEEP' if c['score']['total']>=KEEP else 'REVIEW' if c['score']['total']>=REVIEW else 'REJECT'}; result.append(c)
+        c={'start_frame':int(part[0].get('start_frame', round(a*24))), 'end_frame_exclusive':int(part[-1].get('end_frame_exclusive',round(b*24))), 'start_seconds':_num(a),'end_seconds':_num(b),'duration_seconds':_num(b-a),'source_shot_ids':[x['shot_id'] for x in part],'narrative_segment_ids':list(dict.fromkeys(y for x in part for y in x['narrative_segment_ids'])),'signals':{k:_num(v) for k,v in signals.items()}}
+        c['score']=score_candidate(c); structural='KEEP' if c['score']['total']>=KEEP else 'REVIEW' if c['score']['total']>=REVIEW else 'REJECT'; c['structural_decision']=structural; c['editorial']={'decision':structural, 'status':'PROVISIONAL'}; result.append(c)
     return dedupe(result)
 
 def dedupe(items:list[dict[str,Any]])->list[dict[str,Any]]:
@@ -108,7 +109,17 @@ def dedupe(items:list[dict[str,Any]])->list[dict[str,Any]]:
     for i,x in enumerate(chosen,1): x['candidate_id']=f'BRC_{i:04d}'
     return chosen
 
-def ffmpeg_export_command(movie:Path,c:dict[str,Any],output:Path)->list[str]: return ['ffmpeg','-y','-ss',str(c['start_seconds']),'-i',str(movie),'-t',str(c['duration_seconds']),'-map','0:v:0','-c:v','libx264','-crf','19','-preset','medium','-an',str(output)]
+def ffmpeg_export_command(movie:Path,c:dict[str,Any],output:Path, fps:float=24.0)->list[str]:
+    """Coarse input seek plus accurate output seek, expressed from frame bounds.
+
+    The output-side seek is decoded (not packet copied), so the first emitted frame
+    is frame ``start_frame`` and exactly ``end_frame_exclusive-start_frame`` frames
+    are emitted.  No arbitrary frame offset exists in this construction.
+    """
+    start=int(c['start_frame']) if 'start_frame' in c else round(float(c['start_seconds'])*fps)
+    end=int(c.get('end_frame_exclusive',start+round(float(c.get('duration_seconds', 0))*fps)))
+    coarse=max(0, start- max(1,round(fps))) / fps; delta=start/fps-coarse; count=end-start
+    return ['ffmpeg','-y','-ss',f'{coarse:.9f}','-i',str(movie),'-ss',f'{delta:.9f}','-map','0:v:0','-frames:v',str(count),'-vsync','0','-c:v','libx264','-crf','19','-preset','medium','-an',str(output)]
 def probe(path:Path, width:int,height:int, expected:float)->dict[str,Any]:
     raw=subprocess.check_output(['ffprobe','-v','error','-show_entries','stream=codec_type,codec_name,width,height:format=duration','-of','json',str(path)],text=True); data=json.loads(raw); streams=data.get('streams',[]); video=[x for x in streams if x['codec_type']=='video']; audio=[x for x in streams if x['codec_type']=='audio']; duration=float(data.get('format',{}).get('duration',0)); ok=path.is_file() and path.stat().st_size>0 and len(video)==1 and video[0].get('codec_name')=='h264' and video[0].get('width')==width and video[0].get('height')==height and not audio and abs(duration-expected)<=1.0
     return {'path':str(path),'status':'PASS' if ok else 'FAIL','duration_seconds':duration,'video_streams':len(video),'audio_streams':len(audio),'codec':video[0].get('codec_name') if video else None}
@@ -125,22 +136,87 @@ def contact_sheet(movie:Path, items:list[dict[str,Any]], output:Path)->None:
     if not tiles: raise RuntimeError('could not create contact sheet')
     cols=3; blank=np.zeros_like(tiles[0]); tiles += [blank]*((-len(tiles))%cols); cv2.imwrite(str(output),cv2.vconcat([cv2.hconcat(tiles[i:i+cols]) for i in range(0,len(tiles),cols)]),[cv2.IMWRITE_JPEG_QUALITY,85])
 
-def run_broll_pilot(input_dir:Path)->dict[str,Any]:
+def _cue_context(cues: list[Any], start: float, end: float, padding: float=5.) -> dict[str, Any]:
+    def row(x: Any) -> dict[str, Any]: return {'cue_id':x.cue_id,'start_seconds':x.start_seconds,'end_seconds':x.end_seconds,'text':x.text}
+    return {'asset_overlap':[row(x) for x in cues if _overlap(start,end,x.start_seconds,x.end_seconds)>0], 'context_window':[row(x) for x in cues if _overlap(start-padding,end+padding,x.start_seconds,x.end_seconds)>0], 'literal_transcription':False}
+
+def _narrative_context(segments:list[dict[str,Any]], start:float,end:float)->dict[str,Any]:
+    selected=[x for x in segments if _overlap(start,end,float(x['start_seconds']),float(x['end_seconds']))>0]
+    return {'segment_ids':[x['segment_id'] for x in selected], 'summary_es':[x.get('narrative_summary_es',x.get('summary_es','')) for x in selected], 'tone':[x.get('narrative_tone',x.get('tone','')) for x in selected], 'themes':[x.get('themes',[]) for x in selected], 'interaction_context':[x.get('interaction_context',x.get('narrative_function','')) for x in selected], 'literal_transcription':False}
+
+def candidate_contact_sheet(movie:Path,c:dict[str,Any],fps:float)->bytes:
+    """Build an in-memory five-frame sheet; never samples outside [start,end)."""
+    start,end=int(c['start_frame']),int(c['end_frame_exclusive']); positions=[start, start+(end-start)//4, start+(end-start)//2, start+3*(end-start)//4, end-1]
+    cap=cv2.VideoCapture(str(movie)); frames=[]
+    for frame_no in positions:
+        cap.set(cv2.CAP_PROP_POS_FRAMES,frame_no); ok,frame=cap.read()
+        if not ok: cap.release(); raise RuntimeError(f"cannot decode candidate frame {frame_no}")
+        frames.append(cv2.resize(frame,(320,180)))
+    cap.release(); ok, encoded=cv2.imencode('.jpg',cv2.hconcat(frames),[cv2.IMWRITE_JPEG_QUALITY,85])
+    if not ok: raise RuntimeError('cannot encode candidate contact sheet')
+    return encoded.tobytes()
+
+def boundary_validation(movie:Path, exported:Path, c:dict[str,Any])->dict[str,Any]:
+    """Record diagnostic frame evidence; matching is diagnostic, frame IDs are authority."""
+    source=cv2.VideoCapture(str(movie)); result={'candidate_id':c['candidate_id'],'source_frame_immediately_before':int(c['start_frame'])-1,'source_first_frame':int(c['start_frame']),'source_last_candidate_frame':int(c['end_frame_exclusive'])-1,'source_frame_immediately_after':int(c['end_frame_exclusive'])}
+    def read(cap:Any,n:int)->Any:
+        if n<0:return None
+        cap.set(cv2.CAP_PROP_POS_FRAMES,n); ok,x=cap.read(); return x if ok else None
+    before,first,last,after=(read(source,n) for n in (result['source_frame_immediately_before'],result['source_first_frame'],result['source_last_candidate_frame'],result['source_frame_immediately_after'])); source.release()
+    out=cv2.VideoCapture(str(exported)); exp_first,exp_last=read(out,0),read(out,max(0,int(c['end_frame_exclusive'])-int(c['start_frame'])-1)); out.release()
+    def distance(a:Any,b:Any)->float|None:
+        if a is None or b is None:return None
+        return round(float(np.mean(cv2.absdiff(cv2.resize(a,(160,90)),cv2.resize(b,(160,90))))),3)
+    result['export_first_frame']=0; result['export_last_frame']=int(c['end_frame_exclusive'])-int(c['start_frame'])-1
+    result['diagnostic_mean_abs_difference']={'export_first_to_source_first':distance(exp_first,first),'export_first_to_source_previous':distance(exp_first,before),'export_last_to_source_last':distance(exp_last,last),'export_last_to_source_next':distance(exp_last,after)}
+    result['frame_index_authority']='source start inclusive; end exclusive; image comparisons are diagnostic only'; return result
+
+def _semantic_checkpoint(path:Path, candidate:dict[str,Any], model:str)->dict[str,Any]|None:
+    try:
+        item=json.loads(path.read_text()); expected={'candidate_id':candidate['candidate_id'],'start_frame':candidate['start_frame'],'end_frame_exclusive':candidate['end_frame_exclusive'],'model':model}
+        return item['response'] if all(item.get(k)==v for k,v in expected.items()) and not validate_response(item['response']) else None
+    except (OSError,KeyError,TypeError,json.JSONDecodeError): return None
+
+def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative:Path, checkpoint_dir:Path, fps:float, provider:SemanticProvider|None=None, model:str='gemini-3.6-flash')->dict[str,Any]:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[2]/'.env'); key=os.getenv('GEMINI_API_KEY')
+    active=provider or (GeminiBrollSemanticProvider(key,model) if key else None); cues=parse_srt_file(srt).cues; segments=json.loads(narrative.read_text()).get('segments',[]); checkpoint_dir.mkdir(parents=True,exist_ok=True); usage={'prompt_tokens':0,'response_tokens':0,'thinking_tokens':0,'cached_tokens':0,'total_tokens':0}; reused=requests=0
+    for c in items: # every compact technical candidate is eligible, irrespective of structural rank.
+        c['narrative']=_narrative_context(segments,c['start_seconds'],c['end_seconds']); c['srt_context']=_cue_context(cues,c['start_seconds'],c['end_seconds']); cp=checkpoint_dir/f"{c['candidate_id']}.json"; response=_semantic_checkpoint(cp,c,model)
+        if response is not None: reused+=1
+        elif active is None: c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':'GEMINI_API_KEY is not configured'}; continue
+        else:
+            try:
+                sheet=candidate_contact_sheet(movie,c,fps); response_obj=active.generate(SEMANTIC_PROMPT,{'candidate_id':c['candidate_id'],'narrative':c['narrative'],'srt_context':c['srt_context'],'instruction':'Images are visual authority; context is separate narrative evidence.'},sheet); errors=validate_response(response_obj.data)
+                if errors: raise ValueError('; '.join(errors))
+                response=response_obj.data; write_json(cp,{'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive'],'model':model,'response':response,'usage':response_obj.usage}); requests+=1
+                for name,value in response_obj.usage.items():
+                    if value is not None: usage[name]+=value
+            except Exception as error:
+                c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':str(error)}; continue
+        c['visual']=response['visual']; c['editorial']={**response['editorial'],'status':'VALIDATED'}
+    return {'provider':active.identifier if active else 'unavailable','model':model,'requests':requests,'reused':reused,'usage':usage}
+
+def run_broll_pilot(input_dir:Path, provider:SemanticProvider|None=None, model:str='gemini-3.6-flash')->dict[str,Any]:
     paths=discover(input_dir); shots=load_shots(paths); signals=visual_signals(Path(paths['movie']),shots)
     for shot,signal in zip(shots,signals): shot.update(signal)
     add_context(shots,Path(paths['srt']),Path(paths['narrative'])); items=candidates(shots); output=Path(paths['root'])/'runs'/input_dir.name/'broll-pilot-v1'; exports=output/'exports'; exports.mkdir(parents=True,exist_ok=True)
     # This run owns only these pilot outputs; remove stale files before regeneration.
     for path in [*exports.glob('BRC_*.mp4'),output/'review_reel.mp4',output/'review_contact_sheet.jpg',output/'candidates.json',output/'export_validation.json']:
         if path.is_file(): path.unlink()
-    write_json(output/'candidates.json',{'schema_version':'broll_pilot_candidates_v1','window_id':PILOT_WINDOW,'candidates':items})
     source= cv2.VideoCapture(str(paths['movie'])); width,height=int(source.get(cv2.CAP_PROP_FRAME_WIDTH)),int(source.get(cv2.CAP_PROP_FRAME_HEIGHT)); source.release()
+    # The source fps makes the frame boundaries canonical; semantic analysis is
+    # intentionally before selecting final exports and covers all candidates.
+    fps=float(cv2.VideoCapture(str(paths['movie'])).get(cv2.CAP_PROP_FPS)) or 24.0
+    semantic=semantic_validate(items,Path(paths['movie']),Path(paths['srt']),Path(paths['narrative']),output/'semantic_checkpoints',fps,provider,model)
+    write_json(output/'candidates.json',{'schema_version':'broll_pilot_candidates_v2','window_id':PILOT_WINDOW,'frame_semantics':'start_frame inclusive; end_frame_exclusive exclusive','semantic_run':semantic,'candidates':items})
     exported=[]; validations=[]
     for c in items:
         if c['editorial']['decision']=='KEEP':
-            p=exports/f"{c['candidate_id']}.mp4"; subprocess.run(ffmpeg_export_command(Path(paths['movie']),c,p),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); exported.append(p); validations.append(probe(p,width,height,c['duration_seconds']))
+            p=exports/f"{c['candidate_id']}.mp4"; subprocess.run(ffmpeg_export_command(Path(paths['movie']),c,p,fps),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); validations.append({**probe(p,width,height,(c['end_frame_exclusive']-c['start_frame'])/fps),**boundary_validation(Path(paths['movie']),p,c)}); exported.append(p)
     reel=output/'review_reel.mp4'
     if exported: subprocess.run(review_reel_command(exported,reel),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); validations.append(probe(reel,width,height,sum(c['duration_seconds'] for c in items if c['editorial']['decision']=='KEEP')))
     if exported: contact_sheet(Path(paths['movie']),[c for c in items if c['editorial']['decision']=='KEEP'],output/'review_contact_sheet.jpg')
-    write_json(output/'export_validation.json',{'schema_version':'broll_pilot_export_validation_v1','exports':validations})
+    write_json(output/'export_validation.json',{'schema_version':'broll_pilot_export_validation_v2','frame_semantics':'start_frame inclusive; end_frame_exclusive exclusive','exports':validations})
     keep_items=[x for x in items if x['editorial']['decision']=='KEEP']
     return {'window':PILOT_WINDOW,'shots':len(shots),'candidates':len(items),'KEEP':len(keep_items),'REVIEW':sum(x['editorial']['decision']=='REVIEW' for x in items),'REJECT':sum(x['editorial']['decision']=='REJECT' for x in items),'exported':len(exported),'average_keep_duration':round(sum(x['duration_seconds'] for x in keep_items)/len(keep_items),2) if keep_items else 0.0,'output':output}

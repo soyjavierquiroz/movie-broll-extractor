@@ -1,0 +1,76 @@
+"""Constrained multimodal semantic boundary for B-roll pilot candidates."""
+from __future__ import annotations
+
+import base64
+import json
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+EMOTIONS = ["smiling", "crying", "tense_appearance", "surprised_appearance", "neutral", "unclear"]
+POSITIONS = ["left", "center", "right", "multiple", "unclear"]
+DECISIONS = ["KEEP", "REVIEW", "REJECT"]
+
+SEMANTIC_SCHEMA: dict[str, Any] = {"type": "object", "properties": {
+    "visual": {"type": "object", "properties": {
+        "summary_es": {"type": "string"}, "subjects": {"type": "array", "items": {"type": "string"}},
+        "objects": {"type": "array", "items": {"type": "string"}}, "actions": {"type": "array", "items": {"type": "string"}},
+        "people_count_estimate": {"type": "string"}, "setting": {"type": "string"},
+        "visible_interactions": {"type": "array", "items": {"type": "string"}},
+        "visible_emotions": {"type": "array", "items": {"type": "string", "enum": EMOTIONS}},
+        "primary_subject_position": {"type": "string", "enum": POSITIONS}, "primary_subject_description": {"type": "string"}, "visual_focus": {"type": "string"},
+    }, "required": ["summary_es", "subjects", "objects", "actions", "people_count_estimate", "setting", "visible_interactions", "visible_emotions", "primary_subject_position", "primary_subject_description", "visual_focus"]},
+    "editorial": {"type": "object", "properties": {
+        "standalone_meaning_es": {"type": "string"}, "reusable_broll": {"type": "boolean"},
+        "action_or_moment_complete": {"type": "string", "enum": ["true", "false", "unclear"]},
+        "use_cases_es": {"type": "array", "items": {"type": "string"}}, "negative_use_cases_es": {"type": "array", "items": {"type": "string"}},
+        "search_terms_es": {"type": "array", "items": {"type": "string"}}, "editorial_confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+        "reason": {"type": "string"}, "decision": {"type": "string", "enum": DECISIONS},
+    }, "required": ["standalone_meaning_es", "reusable_broll", "action_or_moment_complete", "use_cases_es", "negative_use_cases_es", "search_terms_es", "editorial_confidence", "reason", "decision"]},
+}, "required": ["visual", "editorial"]}
+
+PROMPT = """You validate a movie B-roll candidate. The images are the only authority for visual facts. Spanish output. Do not infer relationships, jobs, motivations, offscreen events, dialogue, or plot. SRT/narrative are synchronized context, not literal proof of what is visible. Be conservative about emotions and use only the provided enum. Use cases must be concrete visible actions/moments; negative use cases must prevent unsupported claims. Decide KEEP only if the candidate is visually clear, standalone reusable B-roll and has a complete action/moment; there is no quota."""
+
+@dataclass(frozen=True)
+class SemanticResponse:
+    data: dict[str, Any]
+    usage: dict[str, int | None]
+
+class SemanticProvider(Protocol):
+    identifier: str
+    model: str
+    def generate(self, prompt: str, context: dict[str, Any], jpeg: bytes) -> SemanticResponse: ...
+
+class GeminiBrollSemanticProvider:
+    identifier = "gemini"
+    def __init__(self, api_key: str, model: str = "gemini-3.6-flash") -> None:
+        from google import genai
+        self.client = genai.Client(api_key=api_key); self.model = model
+
+    def generate(self, prompt: str, context: dict[str, Any], jpeg: bytes) -> SemanticResponse:
+        # google-genai 2.22.0 Interactions accepts image content as base64 data.
+        content = [{"type": "text", "text": json.dumps(context, ensure_ascii=False)}, {"type": "image", "data": base64.b64encode(jpeg).decode("ascii"), "mime_type": "image/jpeg"}]
+        response = self.client.interactions.create(model=self.model, input=[{"type": "user_input", "content": content}], system_instruction=prompt, generation_config={"thinking_level": "minimal"}, response_format={"type": "text", "mime_type": "application/json", "schema": SEMANTIC_SCHEMA})
+        data = json.loads(response.output_text); usage = getattr(response, "usage", None)
+        def value(*names: str) -> int | None:
+            for name in names:
+                item = getattr(usage, name, None) if usage else None
+                if isinstance(item, int): return item
+            return None
+        return SemanticResponse(data, {"prompt_tokens": value("total_input_tokens"), "response_tokens": value("total_output_tokens"), "thinking_tokens": value("total_thought_tokens"), "cached_tokens": value("total_cached_tokens"), "total_tokens": value("total_tokens")})
+
+def validate_response(data: dict[str, Any]) -> list[str]:
+    try: visual, editorial = data["visual"], data["editorial"]
+    except (KeyError, TypeError): return ["missing visual or editorial"]
+    required_visual = SEMANTIC_SCHEMA["properties"]["visual"]["required"]
+    required_editorial = SEMANTIC_SCHEMA["properties"]["editorial"]["required"]
+    errors = [f"visual missing {x}" for x in required_visual if x not in visual] + [f"editorial missing {x}" for x in required_editorial if x not in editorial]
+    if visual.get("primary_subject_position") not in POSITIONS: errors.append("invalid subject position")
+    if any(x not in EMOTIONS for x in visual.get("visible_emotions", [])): errors.append("invalid visible emotion")
+    if editorial.get("decision") not in DECISIONS: errors.append("invalid decision")
+    if editorial.get("action_or_moment_complete") not in {"true", "false", "unclear"}: errors.append("invalid completeness")
+    forbidden = {"mother", "daughter", "husband", "wife", "couple", "therapist", "trauma", "jealousy", "betrayal"}
+    visual_text = " ".join(str(v).lower() for key in ("summary_es", "subjects", "objects", "actions", "visible_interactions") for v in (visual.get(key, []) if isinstance(visual.get(key), list) else [visual.get(key, "")]))
+    if any(term in visual_text for term in forbidden): errors.append("visual relationship or narrative hallucination")
+    # A semantic KEEP is never accepted without the two explicit usefulness gates.
+    if editorial.get("decision") == "KEEP" and (not editorial.get("reusable_broll") or editorial.get("action_or_moment_complete") != "true"): errors.append("KEEP lacks semantic usefulness")
+    return errors

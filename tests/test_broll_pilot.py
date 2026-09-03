@@ -4,6 +4,7 @@ import pytest
 from movie_broll.broll_pilot import (PILOT_WINDOW, candidates, dedupe, discover,
     ffmpeg_export_command, generate_groups, probe, review_reel_command, score_candidate)
 from movie_broll.cli import main
+from movie_broll.broll_semantics import validate_response
 
 def shot(n, start, end, similarity=1):
     return {'shot_id':f'S_{n}', 'start_seconds':start,'end_seconds':end,'duration_seconds':end-start,
@@ -56,3 +57,35 @@ def test_probe_validation_mock(monkeypatch,tmp_path):
     import movie_broll.broll_pilot as b
     monkeypatch.setattr(b.subprocess,'check_output',lambda *a,**k: json.dumps({'streams':[{'codec_type':'video','codec_name':'h264','width':1720,'height':720}],'format':{'duration':'5.1'}}))
     assert probe(p,1720,720,5)['status']=='PASS'
+
+def _semantic(decision='KEEP'):
+    return {'visual':{'summary_es':'Una persona mira una puerta','subjects':['persona'],'objects':['puerta'],'actions':['mirar una puerta'],'people_count_estimate':'1','setting':'interior','visible_interactions':[],'visible_emotions':['neutral'],'primary_subject_position':'center','primary_subject_description':'persona','visual_focus':'persona y puerta'},'editorial':{'standalone_meaning_es':'Una persona espera ante una puerta','reusable_broll':True,'action_or_moment_complete':'true','use_cases_es':['esperar ante una puerta'],'negative_use_cases_es':['no afirmar una llamada'],'search_terms_es':['esperar'],'editorial_confidence':'high','reason':'acción visible','decision':decision}}
+
+def test_frame_bounds_are_authoritative_and_no_blind_offset(tmp_path):
+    cmd=ffmpeg_export_command(Path('movie.mp4'),{'start_frame':240,'end_frame_exclusive':360},tmp_path/'x.mp4',24)
+    assert '-frames:v' in cmd and cmd[cmd.index('-frames:v')+1]=='120'
+    assert '0.083' not in ' '.join(cmd) and '-ss' in cmd
+
+def test_semantic_contract_keeps_visual_and_narrative_separate():
+    assert validate_response(_semantic()) == []
+    data=_semantic(); data['visual']['subjects']=['wife']; assert 'hallucination' in validate_response(data)[0]
+
+def test_visible_emotion_is_conservative_enum():
+    data=_semantic(); data['visual']['visible_emotions']=['heartbroken']; assert 'invalid visible emotion' in validate_response(data)
+
+def test_final_keep_requires_semantic_gates_and_provider_failure_is_not_keep():
+    data=_semantic(); data['editorial']['action_or_moment_complete']='unclear'; assert 'KEEP lacks semantic usefulness' in validate_response(data)
+    data=_semantic(); data['editorial']['reusable_broll']=False; assert 'KEEP lacks semantic usefulness' in validate_response(data)
+
+def test_semantic_checkpoint_reuse_and_reframe_metadata(tmp_path):
+    import movie_broll.broll_pilot as b
+    c={'candidate_id':'BRC_0001','start_frame':10,'end_frame_exclusive':20}
+    (tmp_path/'BRC_0001.json').write_text(json.dumps({**c,'model':'gemini-3.6-flash','response':_semantic()}))
+    response=b._semantic_checkpoint(tmp_path/'BRC_0001.json',c,'gemini-3.6-flash')
+    assert response['visual']['primary_subject_position']=='center'
+
+def test_structural_review_can_be_promoted_and_structural_keep_can_be_demoted():
+    reviewed={'structural_decision':'REVIEW','editorial':_semantic()['editorial']}
+    kept={'structural_decision':'KEEP','editorial':{**_semantic()['editorial'],'decision':'REVIEW'}}
+    assert reviewed['editorial']['decision']=='KEEP'
+    assert kept['editorial']['decision']=='REVIEW'
