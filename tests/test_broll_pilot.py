@@ -17,9 +17,24 @@ def fake_similarity(monkeypatch):
 
 def test_cli_pilot_broll_exists(monkeypatch,tmp_path,capsys):
     import movie_broll.broll_pilot as b
-    monkeypatch.setattr(b,'run_broll_pilot',lambda x:{'window':'SW_02','shots':16,'candidates':8,'KEEP':5,'REVIEW':2,'REJECT':1,'exported':5,'average_keep_duration':7.2,'output':tmp_path})
+    calls=[]
+    monkeypatch.setattr(b,'run_broll_pilot',lambda x,window_id: calls.append(window_id) or {'window':window_id,'shots':16,'candidates':8,'KEEP':5,'REVIEW':2,'REJECT':1,'exported':5,'average_keep_duration':7.2,'output':tmp_path})
     assert main(['pilot','broll',str(tmp_path)]) == 0
+    assert calls == ['SW_02']
     assert '[broll-pilot] window: SW_02' in capsys.readouterr().out
+
+@pytest.mark.parametrize('window_id', ['SW_01', 'SW_03'])
+def test_cli_pilot_broll_passes_selected_window(monkeypatch,tmp_path,window_id):
+    import movie_broll.broll_pilot as b
+    calls=[]
+    monkeypatch.setattr(b,'run_broll_pilot',lambda x,window_id: calls.append(window_id) or {'window':window_id,'shots':0,'candidates':0,'KEEP':0,'REVIEW':0,'REJECT':0,'exported':0,'average_keep_duration':0.,'output':tmp_path})
+    assert main(['pilot','broll',str(tmp_path),'--window',window_id]) == 0
+    assert calls == [window_id]
+
+def test_cli_pilot_broll_help_lists_window(capsys):
+    with pytest.raises(SystemExit) as error: main(['pilot','broll','--help'])
+    assert error.value.code == 0
+    assert '--window WINDOW' in capsys.readouterr().out
 
 def test_discovery_uses_persisted_sw02(tmp_path):
     inp=tmp_path/'input'/'film'; inp.mkdir(parents=True); (inp/'movie.mp4').write_bytes(b'x'); (inp/'subtitles.srt').write_text('')
@@ -27,6 +42,24 @@ def test_discovery_uses_persisted_sw02(tmp_path):
     (smoke/'windows.json').write_text(json.dumps({'windows':[{'window_id':'SW_02','start_seconds':1,'end_seconds':61}]})); (smoke/'shots.jsonl').write_text(''); (smoke/'selected_profile.json').write_text(json.dumps({'selected_threshold':24}))
     nar=tmp_path/'runs'/'film'/'narrative-v2'; nar.mkdir(); (nar/'narrative_map.json').write_text('{}')
     assert discover(inp)['window']['window_id']==PILOT_WINDOW
+
+def test_discovery_accepts_existing_window_and_rejects_unknown_without_analysis(tmp_path):
+    inp=tmp_path/'input'/'film'; inp.mkdir(parents=True); (inp/'movie.mp4').write_bytes(b'x'); (inp/'subtitles.srt').write_text('')
+    smoke=tmp_path/'runs'/'film'/'visual-smoke-v1'; smoke.mkdir(parents=True)
+    (smoke/'windows.json').write_text(json.dumps({'windows':[{'window_id':'SW_01','start_seconds':1,'end_seconds':61},{'window_id':'SW_03','start_seconds':121,'end_seconds':181}]})); (smoke/'shots.jsonl').write_text(''); (smoke/'selected_profile.json').write_text(json.dumps({'selected_threshold':24}))
+    nar=tmp_path/'runs'/'film'/'narrative-v2'; nar.mkdir(); (nar/'narrative_map.json').write_text('{}')
+    assert discover(inp,'SW_03')['window']['window_id'] == 'SW_03'
+    with pytest.raises(ValueError, match=r"available window IDs: SW_01, SW_03"): discover(inp,'SW_02')
+
+def test_cli_invalid_window_returns_nonzero_before_analysis(monkeypatch,tmp_path,capsys):
+    import movie_broll.broll_pilot as b
+    inp=tmp_path/'input'/'film'; inp.mkdir(parents=True); (inp/'movie.mp4').write_bytes(b'x'); (inp/'subtitles.srt').write_text('')
+    smoke=tmp_path/'runs'/'film'/'visual-smoke-v1'; smoke.mkdir(parents=True)
+    (smoke/'windows.json').write_text(json.dumps({'windows':[{'window_id':'SW_01','start_seconds':1,'end_seconds':61}]})); (smoke/'shots.jsonl').write_text(''); (smoke/'selected_profile.json').write_text(json.dumps({'selected_threshold':24}))
+    nar=tmp_path/'runs'/'film'/'narrative-v2'; nar.mkdir(); (nar/'narrative_map.json').write_text('{}')
+    monkeypatch.setattr(b,'visual_signals',lambda *args: pytest.fail('analysis must not run'))
+    assert main(['pilot','broll',str(inp),'--window','SW_99']) == 2
+    assert 'available window IDs: SW_01' in capsys.readouterr().err
 
 def test_grouping_and_consecutive_max(monkeypatch):
     fake_similarity(monkeypatch)
@@ -80,9 +113,40 @@ def test_final_keep_requires_semantic_gates_and_provider_failure_is_not_keep():
 def test_semantic_checkpoint_reuse_and_reframe_metadata(tmp_path):
     import movie_broll.broll_pilot as b
     c={'candidate_id':'BRC_0001','start_frame':10,'end_frame_exclusive':20}
-    (tmp_path/'BRC_0001.json').write_text(json.dumps({**c,'model':'gemini-3.6-flash','response':_semantic()}))
-    response=b._semantic_checkpoint(tmp_path/'BRC_0001.json',c,'gemini-3.6-flash')
+    identity={'window_id':'SW_01',**c}
+    (tmp_path/'BRC_0001.json').write_text(json.dumps({**identity,'candidate_identity':identity,'model':'gemini-3.6-flash','response':_semantic()}))
+    response=b._semantic_checkpoint(tmp_path/'BRC_0001.json',c,'gemini-3.6-flash','SW_01')
     assert response['visual']['primary_subject_position']=='center'
+    assert b._semantic_checkpoint(tmp_path/'BRC_0001.json',c,'gemini-3.6-flash','SW_02') is None
+
+def test_selected_window_flows_to_isolated_output_and_semantic_checkpoint(monkeypatch,tmp_path):
+    import movie_broll.broll_pilot as b
+    inp=tmp_path/'input'/'film'; inp.mkdir(parents=True); (inp/'movie.mp4').write_bytes(b'x'); (inp/'subtitles.srt').write_text('')
+    smoke=tmp_path/'runs'/'film'/'visual-smoke-v1'; smoke.mkdir(parents=True)
+    windows=[{'window_id':name,'start_seconds':i*100.,'end_seconds':i*100.+60} for i,name in enumerate(('SW_01','SW_02','SW_03'))]
+    (smoke/'windows.json').write_text(json.dumps({'windows':windows}))
+    (smoke/'shots.jsonl').write_text('\n'.join(json.dumps({'window_id':x['window_id'],'shot_id':f"{x['window_id']}_S",'start_seconds':x['start_seconds'],'end_seconds':x['end_seconds'],'detector':{'threshold':24}}) for x in windows))
+    (smoke/'selected_profile.json').write_text(json.dumps({'selected_threshold':24}))
+    nar=tmp_path/'runs'/'film'/'narrative-v2'; nar.mkdir(); (nar/'narrative_map.json').write_text('{}')
+    monkeypatch.setattr(b,'visual_signals',lambda movie,shots:[{} for _ in shots]); monkeypatch.setattr(b,'add_context',lambda *args:None)
+    monkeypatch.setattr(b,'candidates',lambda shots:[{'candidate_id':'BRC_0001','start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.,'duration_seconds':1.,'editorial':{'decision':'REVIEW'}}])
+    class Capture:
+        def get(self, prop): return 24 if prop == b.cv2.CAP_PROP_FPS else 1920
+        def release(self): pass
+    monkeypatch.setattr(b.cv2,'VideoCapture',lambda _:Capture())
+    calls=[]
+    def validate(items,movie,srt,narrative,checkpoint_dir,fps,window_id,provider,model):
+        calls.append((window_id,checkpoint_dir))
+        return {'provider':'fake','model':'fake','requests':0,'reused':0,'usage':{}}
+    monkeypatch.setattr(b,'semantic_validate',validate)
+    report=b.run_broll_pilot(inp,window_id='SW_03')
+    other=b.run_broll_pilot(inp,window_id='SW_01')
+    assert report['window'] == 'SW_03'
+    assert report['output'] == tmp_path/'runs'/'film'/'broll-pilot-v1'/'SW_03'
+    assert other['output'] == tmp_path/'runs'/'film'/'broll-pilot-v1'/'SW_01'
+    assert calls == [('SW_03', report['output']/'semantic_checkpoints'),('SW_01', other['output']/'semantic_checkpoints')]
+    saved=json.loads((report['output']/'candidates.json').read_text())
+    assert saved['window_id'] == 'SW_03' and saved['candidates'][0]['window_id'] == 'SW_03'
 
 def test_structural_review_can_be_promoted_and_structural_keep_can_be_demoted():
     reviewed={'structural_decision':'REVIEW','editorial':_semantic()['editorial']}

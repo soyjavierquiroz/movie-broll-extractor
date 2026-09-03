@@ -15,30 +15,32 @@ def _root(input_dir:Path)->Path: return input_dir.resolve().parents[1]
 def _overlap(a:float,b:float,c:float,d:float)->float: return max(0.,min(b,d)-max(a,c))
 def _num(v:float)->float: return round(float(v),4)
 
-def discover(input_dir:Path)->dict[str,Path|dict[str,Any]]:
+def discover(input_dir:Path, window_id:str=PILOT_WINDOW)->dict[str,Path|dict[str,Any]|str]:
     root=_root(input_dir); smoke=root/'runs'/input_dir.name/'visual-smoke-v1'; narrative=root/'runs'/input_dir.name/'narrative-v2'/'narrative_map.json'
     required={'movie':input_dir/'movie.mp4','windows':smoke/'windows.json','shots':smoke/'shots.jsonl','profile':smoke/'selected_profile.json','narrative':narrative}
     for name,path in required.items():
         if not path.is_file(): raise FileNotFoundError(f"required {name} artifact does not exist: {path}")
     srt=next((input_dir/x for x in ('subtitles.srt',f'{input_dir.name}.srt') if (input_dir/x).is_file()),None)
     if srt is None: raise FileNotFoundError('canonical SRT not found (expected subtitles.srt or movie-id.srt)')
-    windows=json.loads(required['windows'].read_text())['windows']; window=next((x for x in windows if x['window_id']==PILOT_WINDOW),None)
-    if not window: raise ValueError('SW_02 is absent from persisted visual smoke windows')
+    windows=json.loads(required['windows'].read_text())['windows']; available=[x.get('window_id') for x in windows if x.get('window_id')]
+    window=next((x for x in windows if x.get('window_id')==window_id),None)
+    if not window: raise ValueError(f"requested visual smoke window {window_id!r} is absent; available window IDs: {', '.join(available) or '(none)'}")
     profile=json.loads(required['profile'].read_text())
     if float(profile.get('selected_threshold',-1)) != 24.: raise ValueError('pilot requires selected threshold 24')
-    return {**required,'srt':srt,'window':window,'root':root}
+    return {**required,'srt':srt,'window':window,'window_id':window_id,'root':root}
 
 def load_shots(paths:dict[str,Any])->list[dict[str,Any]]:
     w=paths['window']; shots=[json.loads(x) for x in Path(paths['shots']).read_text().splitlines() if x.strip()]
-    result=[x for x in shots if x.get('window_id')==PILOT_WINDOW and float(x.get('detector',{}).get('threshold',-1))==24.]
+    window_id=str(paths['window_id'])
+    result=[x for x in shots if x.get('window_id')==window_id and float(x.get('detector',{}).get('threshold',-1))==24.]
     result.sort(key=lambda x:(x['start_seconds'],x['shot_id']))
-    if not result: raise ValueError('no selected threshold-24 SW_02 shots')
+    if not result: raise ValueError(f'no selected threshold-24 {window_id} shots')
     prior=float(w['start_seconds'])
     for shot in result:
         start,end=float(shot['start_seconds']),float(shot['end_seconds'])
-        if end<=start or abs(start-prior)>0.05 or start<float(w['start_seconds'])-.05 or end>float(w['end_seconds'])+.05: raise ValueError('technical shots are not ordered, continuous, positive, and inside SW_02')
+        if end<=start or abs(start-prior)>0.05 or start<float(w['start_seconds'])-.05 or end>float(w['end_seconds'])+.05: raise ValueError(f'technical shots are not ordered, continuous, positive, and inside {window_id}')
         prior=end
-    if abs(prior-float(w['end_seconds']))>.05: raise ValueError('technical shots do not cover SW_02')
+    if abs(prior-float(w['end_seconds']))>.05: raise ValueError(f'technical shots do not cover {window_id}')
     return result
 
 def visual_signals(movie:Path, shots:list[dict[str,Any]], sample_fps:float=SAMPLE_FPS)->list[dict[str,Any]]:
@@ -171,25 +173,25 @@ def boundary_validation(movie:Path, exported:Path, c:dict[str,Any])->dict[str,An
     result['diagnostic_mean_abs_difference']={'export_first_to_source_first':distance(exp_first,first),'export_first_to_source_previous':distance(exp_first,before),'export_last_to_source_last':distance(exp_last,last),'export_last_to_source_next':distance(exp_last,after)}
     result['frame_index_authority']='source start inclusive; end exclusive; image comparisons are diagnostic only'; return result
 
-def _semantic_checkpoint(path:Path, candidate:dict[str,Any], model:str)->dict[str,Any]|None:
+def _semantic_checkpoint(path:Path, candidate:dict[str,Any], model:str, window_id:str)->dict[str,Any]|None:
     try:
-        item=json.loads(path.read_text()); expected={'candidate_id':candidate['candidate_id'],'start_frame':candidate['start_frame'],'end_frame_exclusive':candidate['end_frame_exclusive'],'model':model}
+        item=json.loads(path.read_text()); identity={'window_id':window_id,'candidate_id':candidate['candidate_id'],'start_frame':candidate['start_frame'],'end_frame_exclusive':candidate['end_frame_exclusive']}; expected={**identity,'candidate_identity':identity,'model':model}
         return item['response'] if all(item.get(k)==v for k,v in expected.items()) and not validate_response(item['response']) else None
     except (OSError,KeyError,TypeError,json.JSONDecodeError): return None
 
-def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative:Path, checkpoint_dir:Path, fps:float, provider:SemanticProvider|None=None, model:str='gemini-3.6-flash')->dict[str,Any]:
+def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative:Path, checkpoint_dir:Path, fps:float, window_id:str, provider:SemanticProvider|None=None, model:str='gemini-3.6-flash')->dict[str,Any]:
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parents[2]/'.env'); key=os.getenv('GEMINI_API_KEY')
     active=provider or (GeminiBrollSemanticProvider(key,model) if key else None); cues=parse_srt_file(srt).cues; segments=json.loads(narrative.read_text()).get('segments',[]); checkpoint_dir.mkdir(parents=True,exist_ok=True); usage={'prompt_tokens':0,'response_tokens':0,'thinking_tokens':0,'cached_tokens':0,'total_tokens':0}; reused=requests=0
     for c in items: # every compact technical candidate is eligible, irrespective of structural rank.
-        c['narrative']=_narrative_context(segments,c['start_seconds'],c['end_seconds']); c['srt_context']=_cue_context(cues,c['start_seconds'],c['end_seconds']); cp=checkpoint_dir/f"{c['candidate_id']}.json"; response=_semantic_checkpoint(cp,c,model)
+        c['narrative']=_narrative_context(segments,c['start_seconds'],c['end_seconds']); c['srt_context']=_cue_context(cues,c['start_seconds'],c['end_seconds']); cp=checkpoint_dir/f"{c['candidate_id']}.json"; response=_semantic_checkpoint(cp,c,model,window_id)
         if response is not None: reused+=1
         elif active is None: c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':'GEMINI_API_KEY is not configured'}; continue
         else:
             try:
-                sheet=candidate_contact_sheet(movie,c,fps); response_obj=active.generate(SEMANTIC_PROMPT,{'candidate_id':c['candidate_id'],'narrative':c['narrative'],'srt_context':c['srt_context'],'instruction':'Images are visual authority; context is separate narrative evidence.'},sheet); errors=validate_response(response_obj.data)
+                sheet=candidate_contact_sheet(movie,c,fps); response_obj=active.generate(SEMANTIC_PROMPT,{'window_id':window_id,'candidate_id':c['candidate_id'],'candidate_identity':{'window_id':window_id,'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive']},'narrative':c['narrative'],'srt_context':c['srt_context'],'instruction':'Images are visual authority; context is separate narrative evidence.'},sheet); errors=validate_response(response_obj.data)
                 if errors: raise ValueError('; '.join(errors))
-                response=response_obj.data; write_json(cp,{'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive'],'model':model,'response':response,'usage':response_obj.usage}); requests+=1
+                response=response_obj.data; identity={'window_id':window_id,'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive']}; write_json(cp,{**identity,'candidate_identity':identity,'model':model,'response':response,'usage':response_obj.usage}); requests+=1
                 for name,value in response_obj.usage.items():
                     if value is not None: usage[name]+=value
             except Exception as error:
@@ -197,10 +199,12 @@ def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative
         c['visual']=response['visual']; c['editorial']={**response['editorial'],'status':'VALIDATED'}
     return {'provider':active.identifier if active else 'unavailable','model':model,'requests':requests,'reused':reused,'usage':usage}
 
-def run_broll_pilot(input_dir:Path, provider:SemanticProvider|None=None, model:str='gemini-3.6-flash')->dict[str,Any]:
-    paths=discover(input_dir); shots=load_shots(paths); signals=visual_signals(Path(paths['movie']),shots)
+def run_broll_pilot(input_dir:Path, provider:SemanticProvider|None=None, model:str='gemini-3.6-flash', window_id:str=PILOT_WINDOW)->dict[str,Any]:
+    paths=discover(input_dir,window_id); shots=load_shots(paths); signals=visual_signals(Path(paths['movie']),shots)
     for shot,signal in zip(shots,signals): shot.update(signal)
-    add_context(shots,Path(paths['srt']),Path(paths['narrative'])); items=candidates(shots); output=Path(paths['root'])/'runs'/input_dir.name/'broll-pilot-v1'; exports=output/'exports'; exports.mkdir(parents=True,exist_ok=True)
+    add_context(shots,Path(paths['srt']),Path(paths['narrative'])); items=candidates(shots)
+    for item in items: item['window_id']=window_id
+    output=Path(paths['root'])/'runs'/input_dir.name/'broll-pilot-v1'/window_id; exports=output/'exports'; exports.mkdir(parents=True,exist_ok=True)
     # This run owns only these pilot outputs; remove stale files before regeneration.
     for path in [*exports.glob('BRC_*.mp4'),output/'review_reel.mp4',output/'review_contact_sheet.jpg',output/'candidates.json',output/'export_validation.json']:
         if path.is_file(): path.unlink()
@@ -208,8 +212,8 @@ def run_broll_pilot(input_dir:Path, provider:SemanticProvider|None=None, model:s
     # The source fps makes the frame boundaries canonical; semantic analysis is
     # intentionally before selecting final exports and covers all candidates.
     fps=float(cv2.VideoCapture(str(paths['movie'])).get(cv2.CAP_PROP_FPS)) or 24.0
-    semantic=semantic_validate(items,Path(paths['movie']),Path(paths['srt']),Path(paths['narrative']),output/'semantic_checkpoints',fps,provider,model)
-    write_json(output/'candidates.json',{'schema_version':'broll_pilot_candidates_v2','window_id':PILOT_WINDOW,'frame_semantics':'start_frame inclusive; end_frame_exclusive exclusive','semantic_run':semantic,'candidates':items})
+    semantic=semantic_validate(items,Path(paths['movie']),Path(paths['srt']),Path(paths['narrative']),output/'semantic_checkpoints',fps,window_id,provider,model)
+    write_json(output/'candidates.json',{'schema_version':'broll_pilot_candidates_v2','window_id':window_id,'frame_semantics':'start_frame inclusive; end_frame_exclusive exclusive','semantic_run':semantic,'candidates':items})
     exported=[]; validations=[]
     for c in items:
         if c['editorial']['decision']=='KEEP':
@@ -219,4 +223,4 @@ def run_broll_pilot(input_dir:Path, provider:SemanticProvider|None=None, model:s
     if exported: contact_sheet(Path(paths['movie']),[c for c in items if c['editorial']['decision']=='KEEP'],output/'review_contact_sheet.jpg')
     write_json(output/'export_validation.json',{'schema_version':'broll_pilot_export_validation_v2','frame_semantics':'start_frame inclusive; end_frame_exclusive exclusive','exports':validations})
     keep_items=[x for x in items if x['editorial']['decision']=='KEEP']
-    return {'window':PILOT_WINDOW,'shots':len(shots),'candidates':len(items),'KEEP':len(keep_items),'REVIEW':sum(x['editorial']['decision']=='REVIEW' for x in items),'REJECT':sum(x['editorial']['decision']=='REJECT' for x in items),'exported':len(exported),'average_keep_duration':round(sum(x['duration_seconds'] for x in keep_items)/len(keep_items),2) if keep_items else 0.0,'output':output}
+    return {'window':window_id,'shots':len(shots),'candidates':len(items),'KEEP':len(keep_items),'REVIEW':sum(x['editorial']['decision']=='REVIEW' for x in items),'REJECT':sum(x['editorial']['decision']=='REJECT' for x in items),'exported':len(exported),'average_keep_duration':round(sum(x['duration_seconds'] for x in keep_items)/len(keep_items),2) if keep_items else 0.0,'output':output}

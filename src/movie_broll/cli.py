@@ -33,8 +33,9 @@ def main(argv=None):
  audit.add_argument("input_dir",help="input/<movie-id> directory containing movie.mp4")
  pilot=sub.add_parser("pilot",help="run bounded evaluation pilots")
  pilot_sub=pilot.add_subparsers(dest="pilot_command",required=True)
- broll=pilot_sub.add_parser("broll",help="create B-roll candidates from the persisted SW_02 smoke window")
+ broll=pilot_sub.add_parser("broll",help="create B-roll candidates from a persisted visual smoke window")
  broll.add_argument("input_dir",help="input/<movie-id> directory")
+ broll.add_argument("--window",default="SW_02",metavar="WINDOW",help="persisted visual smoke window ID (default: SW_02)")
  a=p.parse_args(argv)
  if a.command == "narrative":
   if a.narrative_command == "prepare":
@@ -76,7 +77,7 @@ def main(argv=None):
  if a.command == "pilot":
   try:
    from .broll_pilot import run_broll_pilot
-   report=run_broll_pilot(Path(a.input_dir)); output=report['output']; print(f"[broll-pilot] window: {report['window']}"); print(f"[broll-pilot] shots: {report['shots']}"); print(f"[broll-pilot] candidates: {report['candidates']}")
+   report=run_broll_pilot(Path(a.input_dir),window_id=a.window); output=report['output']; print(f"[broll-pilot] window: {report['window']}"); print(f"[broll-pilot] shots: {report['shots']}"); print(f"[broll-pilot] candidates: {report['candidates']}")
    for key in ('KEEP','REVIEW','REJECT','exported'): print(f"[broll-pilot] {key}: {report[key]}")
    print(f"[broll-pilot] average KEEP duration: {report['average_keep_duration']:.1f}s")
    print(f"[broll-pilot] review reel: {output/'review_reel.mp4'}"); print("[broll-pilot] status: COMPLETE"); return 0
