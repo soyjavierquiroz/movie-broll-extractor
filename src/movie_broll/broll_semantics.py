@@ -8,6 +8,10 @@ from typing import Any, Protocol
 
 EMOTIONS = ["smiling", "crying", "tense_appearance", "surprised_appearance", "neutral", "unclear"]
 POSITIONS = ["left", "center", "right", "multiple", "unclear"]
+PRESENTATIONS = ["woman", "man", "unclear"]
+AGE_GROUPS = ["young_adult", "adult", "middle_aged", "older_adult", "unclear"]
+FRAME_ROLES = ["primary", "secondary", "background", "unclear"]
+RELATIONSHIP_SOURCES = ["visual", "srt", "narrative", "combined"]
 DECISIONS = ["KEEP", "REVIEW", "REJECT"]
 
 SEMANTIC_SCHEMA: dict[str, Any] = {"type": "object", "properties": {
@@ -17,8 +21,18 @@ SEMANTIC_SCHEMA: dict[str, Any] = {"type": "object", "properties": {
         "people_count_estimate": {"type": "string"}, "setting": {"type": "string"},
         "visible_interactions": {"type": "array", "items": {"type": "string"}},
         "visible_emotions": {"type": "array", "items": {"type": "string", "enum": EMOTIONS}},
+        "people": {"type": "array", "items": {"type": "object", "properties": {
+            "presentation": {"type": "string", "enum": PRESENTATIONS},
+            "apparent_age_group": {"type": "string", "enum": AGE_GROUPS},
+            "frame_role": {"type": "string", "enum": FRAME_ROLES},
+            "position": {"type": "string", "enum": POSITIONS},
+        }, "required": ["presentation", "apparent_age_group", "frame_role", "position"]}},
         "primary_subject_position": {"type": "string", "enum": POSITIONS}, "primary_subject_description": {"type": "string"}, "visual_focus": {"type": "string"},
-    }, "required": ["summary_es", "subjects", "objects", "actions", "people_count_estimate", "setting", "visible_interactions", "visible_emotions", "primary_subject_position", "primary_subject_description", "visual_focus"]},
+    }, "required": ["summary_es", "subjects", "objects", "actions", "people_count_estimate", "setting", "visible_interactions", "visible_emotions", "people", "primary_subject_position", "primary_subject_description", "visual_focus"]},
+    "relationships": {"type": "array", "items": {"type": "object", "properties": {
+        "type": {"type": "string"}, "source": {"type": "string", "enum": RELATIONSHIP_SOURCES},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    }, "required": ["type", "source", "confidence"]}},
     "editorial": {"type": "object", "properties": {
         "standalone_meaning_es": {"type": "string"}, "reusable_broll": {"type": "boolean"},
         "action_or_moment_complete": {"type": "string", "enum": ["true", "false", "unclear"]},
@@ -26,9 +40,9 @@ SEMANTIC_SCHEMA: dict[str, Any] = {"type": "object", "properties": {
         "search_terms_es": {"type": "array", "items": {"type": "string"}}, "editorial_confidence": {"type": "string", "enum": ["high", "medium", "low"]},
         "reason": {"type": "string"}, "decision": {"type": "string", "enum": DECISIONS},
     }, "required": ["standalone_meaning_es", "reusable_broll", "action_or_moment_complete", "use_cases_es", "negative_use_cases_es", "search_terms_es", "editorial_confidence", "reason", "decision"]},
-}, "required": ["visual", "editorial"]}
+}, "required": ["visual", "relationships", "editorial"]}
 
-PROMPT = """You validate a movie B-roll candidate. The images are the only authority for visual facts. Spanish output. Do not infer relationships, jobs, motivations, offscreen events, dialogue, or plot. SRT/narrative are synchronized context, not literal proof of what is visible. Be conservative about emotions and use only the provided enum. Use cases must be concrete visible actions/moments; negative use cases must prevent unsupported claims. Decide KEEP only if the candidate is visually clear, standalone reusable B-roll and has a complete action/moment; there is no quota."""
+PROMPT = """You validate a movie B-roll candidate. The images are the only authority for visual facts. Spanish output. Describe every visually relevant person in visual.people using only the supplied approximate enums; do not identify people or exact ages. Relationships are separate evidence: visual source is allowed only for directly visible interaction labels such as talking_face_to_face, embracing, or arguing. Never infer couple, romantic_partner, married_couple, mother_daughter, father_daughter, siblings, or any family relation from images alone. Those specific relations require supporting SRT/narrative evidence and source narrative, srt, or combined. If evidence is insufficient, return [] rather than guessing. SRT/narrative are synchronized context, not literal proof of what is visible. Be conservative about emotions and use only the provided enum. A shot/reverse-shot sequence can be KEEP when it is a coherent complete mini-event with standalone reusable meaning; do not reject it merely because it has multiple shots or people. Reject incomplete dialogue-coverage fragments. Use cases must be concrete visible actions/moments; negative use cases must prevent unsupported claims. Decide KEEP only if the candidate is visually clear, standalone reusable B-roll and has a complete action/moment; there is no quota and no gender preference."""
 
 @dataclass(frozen=True)
 class SemanticResponse:
@@ -65,6 +79,15 @@ def validate_response(data: dict[str, Any]) -> list[str]:
     required_editorial = SEMANTIC_SCHEMA["properties"]["editorial"]["required"]
     errors = [f"visual missing {x}" for x in required_visual if x not in visual] + [f"editorial missing {x}" for x in required_editorial if x not in editorial]
     if visual.get("primary_subject_position") not in POSITIONS: errors.append("invalid subject position")
+    for person in visual.get("people", []):
+        if not isinstance(person, dict) or person.get("presentation") not in PRESENTATIONS: errors.append("invalid person presentation")
+        elif person.get("apparent_age_group") not in AGE_GROUPS: errors.append("invalid person age group")
+        elif person.get("frame_role") not in FRAME_ROLES: errors.append("invalid person frame role")
+        elif person.get("position") not in POSITIONS: errors.append("invalid person position")
+    for relationship in data.get("relationships", []):
+        if not isinstance(relationship, dict) or relationship.get("source") not in RELATIONSHIP_SOURCES: errors.append("invalid relationship provenance"); continue
+        if not isinstance(relationship.get("confidence"), (int, float)) or not 0 <= relationship["confidence"] <= 1: errors.append("invalid relationship confidence")
+        if relationship.get("source") == "visual" and relationship.get("type") in {"romantic_partner", "married_couple", "mother_daughter", "father_daughter", "mother_son", "father_son", "siblings"}: errors.append("visual relationship overreach")
     if any(x not in EMOTIONS for x in visual.get("visible_emotions", [])): errors.append("invalid visible emotion")
     if editorial.get("decision") not in DECISIONS: errors.append("invalid decision")
     if editorial.get("action_or_moment_complete") not in {"true", "false", "unclear"}: errors.append("invalid completeness")

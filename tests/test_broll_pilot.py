@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
 import pytest
-from movie_broll.broll_pilot import (PILOT_WINDOW, candidates, dedupe, discover,
-    ffmpeg_export_command, generate_groups, probe, review_reel_command, score_candidate)
+from movie_broll.broll_pilot import (PILOT_WINDOW, _narrative_context, apply_semantic_scarcity,
+    boundary_validation, candidates, dedupe, discover, ffmpeg_export_command, generate_groups,
+    probe, review_reel_command, score_candidate)
 from movie_broll.cli import main
 from movie_broll.broll_semantics import validate_response
 
@@ -74,11 +75,11 @@ def test_candidate_order_scores_and_decisions(monkeypatch):
     assert score_candidate({'duration_seconds':7,'source_shot_ids':['x'],'signals':{'sharpness':120,'brightness':110,'near_black_fraction':0,'subtitle_occupancy':0,'visual_continuity':1,'motion':12}})['total']>=70
     assert candidates(xs)==candidates(xs) # stable IDs and no random scoring
 
-def test_heavy_overlap_dedupe_and_keep_cap():
+def test_technical_dedupe_retains_candidates_for_semantic_audit():
     def item(ids,score,start): return {'source_shot_ids':ids,'score':{'total':score},'editorial':{'decision':'KEEP'},'start_seconds':start,'end_seconds':start+1}
-    assert len(dedupe([item(['a','b'],90,0),item(['a','b'],80,1)]))==1
+    assert len(dedupe([item(['a','b'],90,0),item(['a','b'],80,1)]))==2
     many=dedupe([item([str(i)],99,i) for i in range(10)])
-    assert sum(x['editorial']['decision']=='KEEP' for x in many)==8
+    assert sum(x['editorial']['decision']=='KEEP' for x in many)==10
 
 def test_ffmpeg_export_is_h264_no_audio_and_review_path(tmp_path):
     c={'start_seconds':1,'duration_seconds':5}; cmd=ffmpeg_export_command(Path('movie.mp4'),c,tmp_path/'x.mp4')
@@ -92,12 +93,13 @@ def test_probe_validation_mock(monkeypatch,tmp_path):
     assert probe(p,1720,720,5)['status']=='PASS'
 
 def _semantic(decision='KEEP'):
-    return {'visual':{'summary_es':'Una persona mira una puerta','subjects':['persona'],'objects':['puerta'],'actions':['mirar una puerta'],'people_count_estimate':'1','setting':'interior','visible_interactions':[],'visible_emotions':['neutral'],'primary_subject_position':'center','primary_subject_description':'persona','visual_focus':'persona y puerta'},'editorial':{'standalone_meaning_es':'Una persona espera ante una puerta','reusable_broll':True,'action_or_moment_complete':'true','use_cases_es':['esperar ante una puerta'],'negative_use_cases_es':['no afirmar una llamada'],'search_terms_es':['esperar'],'editorial_confidence':'high','reason':'acción visible','decision':decision}}
+    return {'visual':{'summary_es':'Una persona mira una puerta','subjects':['persona'],'objects':['puerta'],'actions':['mirar una puerta'],'people_count_estimate':'1','setting':'interior','visible_interactions':[],'visible_emotions':['neutral'],'people':[{'presentation':'unclear','apparent_age_group':'unclear','frame_role':'primary','position':'center'}],'primary_subject_position':'center','primary_subject_description':'persona','visual_focus':'persona y puerta'},'relationships':[],'editorial':{'standalone_meaning_es':'Una persona espera ante una puerta','reusable_broll':True,'action_or_moment_complete':'true','use_cases_es':['esperar ante una puerta'],'negative_use_cases_es':['no afirmar una llamada'],'search_terms_es':['esperar'],'editorial_confidence':'high','reason':'acción visible','decision':decision}}
 
 def test_frame_bounds_are_authoritative_and_no_blind_offset(tmp_path):
     cmd=ffmpeg_export_command(Path('movie.mp4'),{'start_frame':240,'end_frame_exclusive':360},tmp_path/'x.mp4',24)
     assert '-frames:v' in cmd and cmd[cmd.index('-frames:v')+1]=='120'
-    assert '0.083' not in ' '.join(cmd) and '-ss' in cmd
+    assert '0.083' not in ' '.join(cmd) and cmd.count('-ss') == 1
+    assert 'trim=start_frame=24:end_frame=144' in cmd[cmd.index('-vf')+1]
 
 def test_semantic_contract_keeps_visual_and_narrative_separate():
     assert validate_response(_semantic()) == []
@@ -114,7 +116,7 @@ def test_semantic_checkpoint_reuse_and_reframe_metadata(tmp_path):
     import movie_broll.broll_pilot as b
     c={'candidate_id':'BRC_0001','start_frame':10,'end_frame_exclusive':20}
     identity={'window_id':'SW_01',**c}
-    (tmp_path/'BRC_0001.json').write_text(json.dumps({**identity,'candidate_identity':identity,'model':'gemini-3.6-flash','response':_semantic()}))
+    (tmp_path/'BRC_0001.json').write_text(json.dumps({**identity,'candidate_identity':identity,'model':'gemini-3.6-flash','semantic_schema_version':'broll_semantics_v2','semantic_prompt_version':'broll_semantic_prompt_v2','response':_semantic()}))
     response=b._semantic_checkpoint(tmp_path/'BRC_0001.json',c,'gemini-3.6-flash','SW_01')
     assert response['visual']['primary_subject_position']=='center'
     assert b._semantic_checkpoint(tmp_path/'BRC_0001.json',c,'gemini-3.6-flash','SW_02') is None
@@ -153,3 +155,61 @@ def test_structural_review_can_be_promoted_and_structural_keep_can_be_demoted():
     kept={'structural_decision':'KEEP','editorial':{**_semantic()['editorial'],'decision':'REVIEW'}}
     assert reviewed['editorial']['decision']=='KEEP'
     assert kept['editorial']['decision']=='REVIEW'
+
+def test_narrative_bridge_reads_canonical_value_wrappers_and_flattens_themes():
+    context=_narrative_context([{'segment_id':'NARR_1','start_seconds':0,'end_seconds':5,
+        'narrative_summary':{'value':'Resumen canónico'},'narrative_tone':{'value':'sad'},
+        'themes':[{'value':'duelo'},'familia'],'narrative_function':{'value':'conversation'}}],1,2)
+    assert context == {'segment_ids':['NARR_1'],'summary_es':['Resumen canónico'],'tone':['sad'],
+        'themes':['duelo','familia'],'interaction_context':['conversation'],'literal_transcription':False}
+    assert _narrative_context([],1,2)['themes'] == []
+
+def test_people_and_relationship_provenance_contract():
+    data=_semantic(); data['visual']['people']=[{'presentation':'woman','apparent_age_group':'young_adult','frame_role':'primary','position':'left'},{'presentation':'man','apparent_age_group':'adult','frame_role':'secondary','position':'right'}]
+    data['relationships']=[{'type':'romantic_partner','source':'narrative','confidence':.78}]
+    assert validate_response(data) == []
+    data['relationships'][0]['source']='visual'
+    assert 'overreach' in validate_response(data)[0]
+
+def test_semantic_scarcity_suppresses_only_nearby_same_meaning():
+    def candidate(identifier,start,meaning,action='hablar',presentation='woman'):
+        return {'candidate_id':identifier,'start_seconds':start,'end_seconds':start+5,'score':{'total':90-start},
+          'visual':{'setting':'azotea','actions':[action],'visible_interactions':[]},'people':[{'presentation':presentation}], 'relationships':[],
+          'editorial':{'decision':'KEEP','standalone_meaning_es':meaning,'use_cases_es':[meaning]}}
+    same=candidate('BRC_0002',6,'mujer hablando en azotea')
+    winner=candidate('BRC_0001',0,'mujer hablando en azotea')
+    distinct=candidate('BRC_0003',12,'mujer se disculpa en azotea','disculparse')
+    apply_semantic_scarcity([winner,same,distinct])
+    assert same['editorial']['decision']=='REJECT' and same['semantic_redundancy']['redundant_with']=='BRC_0001'
+    assert distinct['editorial']['decision']=='KEEP'
+
+def test_boundary_validation_fails_previous_frame_provenance(monkeypatch):
+    import movie_broll.broll_pilot as b
+    frame=lambda value: __import__('numpy').full((10,10,3),value,dtype='uint8')
+    class Capture:
+        def __init__(self, frames): self.frames=frames; self.pos=0
+        def set(self, _, value): self.pos=int(value)
+        def read(self): return (self.pos in self.frames, self.frames.get(self.pos))
+        def get(self, _): return len(self.frames)
+        def release(self): pass
+    source={9:frame(1),10:frame(50),11:frame(60),12:frame(70)}; exported={0:frame(1),1:frame(60)}
+    calls=iter([Capture(source),Capture(exported)])
+    monkeypatch.setattr(b.cv2,'VideoCapture',lambda _:next(calls))
+    result=boundary_validation(Path('source.mp4'),Path('export.mp4'),{'candidate_id':'BRC_1','start_frame':10,'end_frame_exclusive':12})
+    assert result['boundary_validation']=='FAIL' and not result['first_frame_matches_target'] and result['actual_frame_count']==2
+
+def test_frame_exact_export_on_synthetic_movie(tmp_path):
+    """A real ffmpeg regression using only generated, uniquely coloured frames."""
+    import cv2
+    import movie_broll.broll_pilot as b
+    source=tmp_path/'source.avi'; out=tmp_path/'clip.mp4'; fps=24
+    writer=cv2.VideoWriter(str(source),cv2.VideoWriter_fourcc(*'MJPG'),fps,(64,48))
+    for number in range(48): writer.write(__import__('numpy').full((48,64,3),(number*5 % 255, number*11 % 255, number*17 % 255),dtype='uint8'))
+    writer.release()
+    # Starts beyond the one-second preroll so the coarse seek + relative trim path
+    # (not merely a decode-from-zero path) is exercised.
+    candidate={'candidate_id':'BRC_SYN','start_frame':36,'end_frame_exclusive':46}
+    b.subprocess.run(ffmpeg_export_command(source,candidate,out,fps),check=True,stdout=b.subprocess.DEVNULL,stderr=b.subprocess.DEVNULL)
+    validation=boundary_validation(source,out,candidate)
+    assert validation['boundary_validation']=='PASS'
+    assert validation['expected_frame_count']==validation['actual_frame_count']==10
