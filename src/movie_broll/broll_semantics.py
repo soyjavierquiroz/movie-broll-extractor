@@ -13,6 +13,7 @@ AGE_GROUPS = ["young_adult", "adult", "middle_aged", "older_adult", "unclear"]
 FRAME_ROLES = ["primary", "secondary", "background", "unclear"]
 RELATIONSHIP_SOURCES = ["visual", "srt", "narrative", "combined"]
 DECISIONS = ["KEEP", "REVIEW", "REJECT"]
+FOCUS_SUBJECTS = ["woman", "man", "multiple_people", "action_region", "environment", "unclear"]
 
 SEMANTIC_SCHEMA: dict[str, Any] = {"type": "object", "properties": {
     "visual": {"type": "object", "properties": {
@@ -28,10 +29,10 @@ SEMANTIC_SCHEMA: dict[str, Any] = {"type": "object", "properties": {
             "position": {"type": "string", "enum": POSITIONS},
         }, "required": ["presentation", "apparent_age_group", "frame_role", "position"]}},
         "primary_subject_position": {"type": "string", "enum": POSITIONS}, "primary_subject_description": {"type": "string"}, "visual_focus": {"type": "string"},
-        "shot_focus": {"type": "array", "items": {"type": "object", "properties": {
-            "shot_id": {"type": "string"}, "focus_subject": {"type": "string"}, "focus_role": {"type": "string", "enum": ["primary", "secondary"]}, "focus_reason": {"type": "string"}, "preserve_interaction": {"type": "boolean"}, "required_secondary_subjects": {"type": "array", "items": {"type": "string"}}, "required_action_region": {"type": "array", "items": {"type": "object"}}
-        }, "required": ["shot_id", "focus_subject", "focus_role", "focus_reason", "preserve_interaction"]}},
-    }, "required": ["summary_es", "subjects", "objects", "actions", "people_count_estimate", "setting", "visible_interactions", "visible_emotions", "people", "primary_subject_position", "primary_subject_description", "visual_focus"]},
+        "shot_focus_plan": {"type": "array", "items": {"type": "object", "properties": {
+            "shot_id": {"type": "string"}, "focus_subject": {"type": "string", "enum": FOCUS_SUBJECTS}, "focus_reason": {"type": "string"}, "preserve_secondary_subject": {"type": "boolean"}, "interaction_requires_both": {"type": "boolean"}, "focus_position": {"type": "string", "enum": POSITIONS}
+        }, "required": ["shot_id", "focus_subject", "focus_reason", "preserve_secondary_subject", "interaction_requires_both"]}},
+    }, "required": ["summary_es", "subjects", "objects", "actions", "people_count_estimate", "setting", "visible_interactions", "visible_emotions", "people", "primary_subject_position", "primary_subject_description", "visual_focus", "shot_focus_plan"]},
     "relationships": {"type": "array", "items": {"type": "object", "properties": {
         "type": {"type": "string"}, "source": {"type": "string", "enum": RELATIONSHIP_SOURCES},
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
@@ -45,7 +46,7 @@ SEMANTIC_SCHEMA: dict[str, Any] = {"type": "object", "properties": {
     }, "required": ["standalone_meaning_es", "reusable_broll", "action_or_moment_complete", "use_cases_es", "negative_use_cases_es", "search_terms_es", "editorial_confidence", "reason", "decision"]},
 }, "required": ["visual", "relationships", "editorial"]}
 
-PROMPT = """You validate a movie B-roll candidate. The images are the only authority for visual facts. Spanish output. Describe every visually relevant person in visual.people using only the supplied approximate enums; do not identify people or exact ages. Populate visual.shot_focus only for supplied technical shot IDs when they are available in context: it is a compact per-shot editorial focus directive, not another analysis request. Prefer a visible face over an over-the-shoulder back/head silhouette. Set preserve_interaction or required secondary/action regions only where simultaneous composition is essential. Relationships are separate evidence: visual source is allowed only for directly visible interaction labels such as talking_face_to_face, embracing, or arguing. Never infer couple, romantic_partner, married_couple, mother_daughter, father_daughter, siblings, or any family relation from images alone. Those specific relations require supporting SRT/narrative evidence and source narrative, srt, or combined. If evidence is insufficient, return []. SRT/narrative are synchronized context, not literal proof of what is visible. Be conservative about emotions and use only the provided enum. A shot/reverse-shot sequence can be KEEP when it is a coherent complete mini-event with standalone reusable meaning; do not reject it merely because it has multiple shots or people. Reject incomplete dialogue-coverage fragments. Use cases must be concrete visible actions/moments; negative use cases must prevent unsupported claims. Decide KEEP only if the candidate is visually clear, standalone reusable B-roll and has a complete action/moment; there is no quota and no gender preference."""
+PROMPT = """You validate a movie B-roll candidate. The images are the only authority for visual facts. Spanish output. Describe every visually relevant person in visual.people using only the supplied approximate enums; do not identify people or exact ages. Return visual.shot_focus_plan, exactly one compact directive for every supplied technical shot ID. Use only woman, man, multiple_people, action_region, environment, or unclear. The representative images are labelled SHOT ID/order; do not copy an event-level 'woman and man' description into every shot. Prefer a clear visible interlocutor face over a large over-the-shoulder back/head silhouette. interaction_requires_both is true only where simultaneous framing is genuinely essential; reverse shots normally focus one person. Relationships are separate evidence: visual source is allowed only for directly visible interaction labels such as talking_face_to_face, embracing, or arguing. Never infer couple, romantic_partner, married_couple, mother_daughter, father_daughter, siblings, or any family relation from images alone. Those specific relations require supporting SRT/narrative evidence and source narrative, srt, or combined. If evidence is insufficient, return []. SRT/narrative are synchronized context, not literal proof of what is visible. Be conservative about emotions and use only the provided enum. A shot/reverse-shot sequence can be KEEP when it is a coherent complete mini-event with standalone reusable meaning; do not reject it merely because it has multiple shots or people. Reject incomplete dialogue-coverage fragments. Use cases must be concrete visible actions/moments; negative use cases must prevent unsupported claims. Decide KEEP only if the candidate is visually clear, standalone reusable B-roll and has a complete action/moment; there is no quota and no gender preference."""
 
 @dataclass(frozen=True)
 class SemanticResponse:
@@ -82,6 +83,8 @@ def validate_response(data: dict[str, Any]) -> list[str]:
     required_editorial = SEMANTIC_SCHEMA["properties"]["editorial"]["required"]
     errors = [f"visual missing {x}" for x in required_visual if x not in visual] + [f"editorial missing {x}" for x in required_editorial if x not in editorial]
     if visual.get("primary_subject_position") not in POSITIONS: errors.append("invalid subject position")
+    plan=visual.get('shot_focus_plan', [])
+    if plan and (not isinstance(plan,list) or any(not isinstance(x,dict) or x.get('focus_subject') not in FOCUS_SUBJECTS or not all(k in x for k in ('shot_id','focus_reason','preserve_secondary_subject','interaction_requires_both')) for x in plan)): errors.append('invalid shot focus plan')
     for person in visual.get("people", []):
         if not isinstance(person, dict) or person.get("presentation") not in PRESENTATIONS: errors.append("invalid person presentation")
         elif person.get("apparent_age_group") not in AGE_GROUPS: errors.append("invalid person age group")

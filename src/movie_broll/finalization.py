@@ -10,6 +10,11 @@ from .processing_ledger import ProcessingLedger, fingerprint
 from .utils import sha256_file, write_json
 
 MOVIE_CODES={"romper-el-circulo":"rc"}; SAFE_MARGIN=.08
+# This is deliberately persistent: it is part of every vertical-only reuse key.
+REFRAME_ALGORITHM_VERSION="3e.2-shot-focus-face-safe-v1"
+SHOT_FOCUS_SCHEMA_VERSION="shot_focus_plan_v1"
+LOCAL_DETECTOR_VERSION="yolov5nu-onnx-person+haar-face-v1"
+FOCUS_SUBJECTS={"woman","man","multiple_people","action_region","environment","unclear"}
 def movie_code(run:Path,movie_id:str)->str:
     path=run/'movie_metadata.json'
     if path.exists(): return json.loads(path.read_text())['movie_code']
@@ -26,15 +31,35 @@ def crop_x(width:int,height:int,position:str)->int:
     crop=min(width,round(height*3/4)); return 0 if position=='left' else width-crop if position=='right' else max(0,(width-crop)//2)
 def _bbox(value:dict[str,Any])->dict[str,float]:
     b=value.get('bbox',value); x,y,w,h=(b.get(k,0.) for k in ('x','y','width','height')); return {'x':float(x),'y':float(y),'width':float(w),'height':float(h),**{k:v for k,v in value.items() if k not in {'x','y','width','height','bbox'}}}
+def _model_path()->Path:
+    """Standalone optional model location; never borrows another application's cache."""
+    return Path(__file__).resolve().parents[2]/'cache'/'models'/'movie-broll'/'yolov5nu.onnx'
+def _yolo_people(frame:np.ndarray)->list[dict[str,Any]]:
+    """Best-effort CPU YOLO ONNX inference when the documented local model exists."""
+    path=_model_path()
+    if not path.is_file(): return []
+    try:
+        net=cv2.dnn.readNetFromONNX(str(path)); blob=cv2.dnn.blobFromImage(frame,1/255.,(640,640),swapRB=True); net.setInput(blob); out=np.squeeze(net.forward())
+        if out.ndim==2 and out.shape[0] < out.shape[1]: out=out.T
+        sx,sy=frame.shape[1]/640.,frame.shape[0]/640.; result=[]
+        for row in out:
+            if len(row)<5: continue
+            score=float(row[4])
+            if score<.35: continue
+            cx,cy,w,h=(float(v) for v in row[:4]); result.append({'bbox':{'x':max(0.,(cx-w/2)*sx),'y':max(0.,(cy-h/2)*sy),'width':w*sx,'height':h*sy},'face_visible':False,'confidence':score,'detector':'yolo_person'})
+        return result
+    except cv2.error: return []
 def detect_people(frame:np.ndarray)->list[dict[str,Any]]:
-    """CPU-only face-first local geometry; HOG is the body fallback."""
+    """Local face geometry plus optional standalone YOLO person geometry; never HOG-only."""
     gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY); cascade=cv2.CascadeClassifier(cv2.data.haarcascades+'haarcascade_frontalface_default.xml'); faces=cascade.detectMultiScale(gray,1.1,4,minSize=(20,20)) if not cascade.empty() else []
-    if len(faces): return [{'bbox':{'x':float(x),'y':float(y),'width':float(w),'height':float(h)},'face_visible':True,'confidence':1.} for x,y,w,h in faces]
-    hog=cv2.HOGDescriptor(); hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector()); boxes,weights=hog.detectMultiScale(frame,winStride=(8,8),padding=(8,8),scale=1.05)
-    return [{'bbox':{'x':float(x),'y':float(y),'width':float(w),'height':float(h)},'face_visible':False,'confidence':float(q)} for (x,y,w,h),q in zip(boxes,weights)]
+    people=_yolo_people(frame)
+    # Faces remain separate candidates so a focused interlocutor beats a large OTS body.
+    people.extend({'bbox':{'x':float(x),'y':float(y),'width':float(w),'height':float(h)},'face_visible':True,'confidence':1.,'detector':'haar_face'} for x,y,w,h in faces)
+    return people
 def _directive(event:dict[str,Any],shot:dict[str,Any])->dict[str,Any]:
-    visual=event.get('visual',{}); values=visual.get('shot_focus',event.get('shot_focus',[])) or []; direct=next((x for x in values if x.get('shot_id')==shot.get('shot_id')),{})
-    return {'focus_subject':visual.get('primary_subject_description','primary'),'focus_role':'primary','preserve_interaction':False,**direct}
+    visual=event.get('visual',{}); values=visual.get('shot_focus_plan',visual.get('shot_focus',event.get('shot_focus_plan',event.get('shot_focus',[])))) or []; direct=next((x for x in values if x.get('shot_id')==shot.get('shot_id')),{})
+    subject=str(direct.get('focus_subject','unclear')).lower()
+    return {'focus_subject':subject if subject in FOCUS_SUBJECTS else 'unclear','focus_role':direct.get('focus_role','primary'),'preserve_interaction':bool(direct.get('interaction_requires_both',direct.get('preserve_interaction',False))),'directive_available':bool(direct),**direct}
 def _sample_frames(video:Path,start:float,end:float,count:int=5)->list[tuple[float,np.ndarray]]:
     cap=cv2.VideoCapture(str(video)); fps=cap.get(cv2.CAP_PROP_FPS) or 24.; out=[]
     for t in np.linspace(start+(end-start)*.12,end-(end-start)*.12,max(1,count)):
@@ -80,7 +105,9 @@ def build_shot_crop_plan(video:Path,event:dict[str,Any],shots:dict[str,dict[str,
         elif samples: anchors=_smooth(samples,crop)
         else:
             pos=str(shot.get('primary_subject_position',event.get('visual',{}).get('primary_subject_position','center'))).lower(); anchors=[{'time':start,'x':float(crop_x(width,height,pos))}]
-        plans.append({'shot_id':sid,'start_seconds':start,'end_seconds':end,'focus_subject':direct['focus_subject'],'focus_role':direct['focus_role'],'focus_reason':direct.get('focus_reason','semantic primary subject plus local geometry'),'preserve_interaction':preserve,'required_action_region':regions,'focus_bbox':focus,'subject_bboxes':all_boxes,'anchors':anchors,'x':float(np.median([x['x'] for x in anchors])),'crop_width':crop,'source_width':width,'strategy':strategy,'review_required':impossible,'action_preserved':not action or bool(required)})
+        required_person=direct['focus_subject'] in {'woman','man','multiple_people'}
+        unresolved=required_person and focus is None
+        plans.append({'shot_id':sid,'start_seconds':start,'end_seconds':end,'focus_subject':direct['focus_subject'],'focus_role':direct['focus_role'],'focus_reason':direct.get('focus_reason','semantic shot focus plus local geometry'),'directive_available':direct['directive_available'],'required_person_focus':required_person,'preserve_interaction':preserve,'required_action_region':regions,'focus_bbox':focus,'subject_bboxes':all_boxes,'anchors':anchors,'x':float(np.median([x['x'] for x in anchors])),'crop_width':crop,'source_width':width,'strategy':strategy,'review_required':impossible or unresolved or not direct['directive_available'],'action_preserved':not action or bool(required),'detector_version':LOCAL_DETECTOR_VERSION})
     return plans
 def shot_crop_plan(event:dict[str,Any],shots:dict[str,dict[str,Any]],width:int,height:int)->list[dict[str,Any]]:
     """No-video compatibility fallback; production calls build_shot_crop_plan."""
@@ -107,13 +134,17 @@ def render_vertical(horizontal:Path,output:Path,event:dict[str,Any],plan:list[di
     finally:temp.unlink(missing_ok=True)
 def _shot_validation(rule:dict[str,Any])->dict[str,Any]:
     crop=float(rule['crop_width']); x=float(rule['x']); margin=crop*SAFE_MARGIN; focus=rule.get('focus_bbox'); source=float(rule['source_width']); source_clip=False; introduced=False; empty=False
+    required_person=bool(rule.get('required_person_focus',rule.get('focus_subject') in {'woman','man','multiple_people'}))
     if focus:
         source_clip=focus['x']<=1 or focus['x']+focus['width']>=source-1; safe=focus['x']>=x+margin and focus['x']+focus['width']<=x+crop-margin; introduced=not safe and not source_clip; empty=introduced and abs((focus['x']+focus['width']/2)-(x+crop/2))>crop*.20
     action_ok=True
     for region in rule.get('required_action_region',[]) or []:
         b=_bbox(region); action_ok=action_ok and b['x']>=x and b['x']+b['width']<=x+crop
-    stable=len(rule.get('anchors',[]))<=1 or max(abs(b['x']-a['x']) for a,b in zip(rule['anchors'],rule['anchors'][1:]))<=crop*.18+1; interaction=not rule.get('review_required',False); ok=not introduced and not empty and stable and interaction and rule.get('action_preserved',True) and action_ok
-    return {'shot_id':rule['shot_id'],'focus_subject_present':bool(focus) or rule['strategy']=='fallback','focus_subject_safe':not introduced,'introduced_subject_clipping':introduced,'source_edge_exception':source_clip,'empty_space_while_clipped':empty,'interaction_preserved':interaction,'action_preserved':rule.get('action_preserved',True) and action_ok,'crop_stable':stable,'status':'PASS' if ok else 'FAIL'}
+    stable=len(rule.get('anchors',[]))<=1 or max(abs(b['x']-a['x']) for a,b in zip(rule['anchors'],rule['anchors'][1:]))<=crop*.18+1; interaction=not rule.get('review_required',False)
+    present=bool(focus) if required_person else True
+    safe=bool(focus) and not introduced if required_person else not introduced
+    ok=bool(rule.get('directive_available',True)) and present and safe and not introduced and not empty and stable and interaction and rule.get('action_preserved',True) and action_ok
+    return {'shot_id':rule['shot_id'],'focus_directive_available':bool(rule.get('directive_available',True)),'focus_subject_present':present,'focus_subject_safe':safe,'introduced_subject_clipping':introduced,'source_edge_exception':source_clip,'empty_space_while_clipped':empty,'interaction_preserved':interaction,'action_preserved':rule.get('action_preserved',True) and action_ok,'crop_stable':stable,'status':'PASS' if ok else 'FAIL'}
 def validate_vertical(path:Path,expected:float,plan:list[dict[str,Any]],event:dict[str,Any])->dict[str,Any]:
     cap=cv2.VideoCapture(str(path)); w,h=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); count=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); fps=cap.get(cv2.CAP_PROP_FPS) or 24.; frames=[]
     for i in {0,max(0,count//2),max(0,count-1)}:cap.set(cv2.CAP_PROP_POS_FRAMES,i); ok,x=cap.read(); frames.extend([x] if ok else [])
@@ -137,6 +168,19 @@ def safe_cleanup(work:Path,keep_debug_artifacts:bool=False)->int:
     for x in root.iterdir():x.unlink() if x.is_symlink() or x.is_file() else shutil.rmtree(x)
     return size
 def _complete_package(assets:Path,base:str)->bool:return all((assets/f'{pre}{base}{suffix}').exists() for pre,suffix in (('', '.mp4'),('v','.mp4'),('', '.jpg'),('v','.jpg'),('', '.json')))
+def reframe_fingerprint(event:dict[str,Any],shots:dict[str,dict[str,Any]],width:int,height:int)->str:
+    """Vertical-only cache key.  Semantic/horizontal stages intentionally stay outside it."""
+    plan=event.get('visual',{}).get('shot_focus_plan',event.get('shot_focus_plan',[]))
+    shot_identity=[{'shot_id':sid,'start':shots.get(sid,{}).get('start_seconds'),'end':shots.get(sid,{}).get('end_seconds')} for sid in event.get('source_shot_ids',[])]
+    return fingerprint({'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'shot_focus_schema_version':SHOT_FOCUS_SCHEMA_VERSION,'local_detector_version':LOCAL_DETECTOR_VERSION,'crop':{'safe_margin':SAFE_MARGIN,'aspect_ratio':'3:4','width':width,'height':height},'source_shots':shot_identity,'semantic_focus_plan':plan})
+def _vertical_reuse_valid(assets:Path,base:str,reframe_fp:str)->bool:
+    meta=assets/f'{base}.json'
+    try:
+        data=json.loads(meta.read_text()); return _complete_package(assets,base) and data.get('visual',{}).get('final_vertical',{}).get('reframe_fingerprint')==reframe_fp and data.get('visual',{}).get('final_vertical',{}).get('reframe_algorithm_version')==REFRAME_ALGORITHM_VERSION
+    except (OSError,json.JSONDecodeError): return False
+def _retire_package(assets:Path,base:str)->None:
+    """Remove a stale complete package only after its horizontal source is copied to work."""
+    for pre,suffix in (('', '.mp4'),('v','.mp4'),('', '.jpg'),('v','.jpg'),('', '.json')): (assets/f'{pre}{base}{suffix}').unlink(missing_ok=True)
 def _remove_incomplete_assets(assets:Path)->None:
     for file in assets.glob('*'):
         if file.is_file():
@@ -144,23 +188,28 @@ def _remove_incomplete_assets(assets:Path)->None:
             if not _complete_package(assets,base):file.unlink()
 def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False)->dict[str,Any]:
     root=input_dir.resolve().parents[1]; movie_id=input_dir.name; run=root/'runs'/movie_id; pilot=run/'broll-pilot-v1'/window_id; candidates=json.loads((pilot/'candidates.json').read_text()).get('candidates',[]); assets=run/'assets'; assets.mkdir(parents=True,exist_ok=True); _remove_incomplete_assets(assets); work=run/'.work'; work.mkdir(parents=True,exist_ok=True); review_dir=run/'review'; shots_path=run/'visual-smoke-v1'/'shots.jsonl'; shots={x['shot_id']:x for x in (json.loads(y) for y in shots_path.read_text().splitlines() if y.strip())} if shots_path.exists() else {}
-    movie=input_dir/'movie.mp4'; source=cv2.VideoCapture(str(movie)); width,height=int(source.get(cv2.CAP_PROP_FRAME_WIDTH)),int(source.get(cv2.CAP_PROP_FRAME_HEIGHT)); fps=source.get(cv2.CAP_PROP_FPS) or 24.; source.release(); ledger=ProcessingLedger(run,movie_id,{'finalization_version':'3e.1','movie_code':movie_code(run,movie_id)}); completed=review=reused=0
+    movie=input_dir/'movie.mp4'; source=cv2.VideoCapture(str(movie)); width,height=int(source.get(cv2.CAP_PROP_FRAME_WIDTH)),int(source.get(cv2.CAP_PROP_FRAME_HEIGHT)); fps=source.get(cv2.CAP_PROP_FPS) or 24.; source.release(); ledger=ProcessingLedger(run,movie_id,{'finalization_version':'3e.2','reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'movie_code':movie_code(run,movie_id)}); completed=review=reused=0
     for e in candidates:
         if e.get('editorial',{}).get('decision')!='KEEP' or e.get('editorial',{}).get('status')!='VALIDATED':continue
-        fp=fingerprint({'range':[e['start_frame'],e['end_frame_exclusive']],'shots':e.get('source_shot_ids',[]),'semantic':e.get('visual',{}),'version':'3e.1'}); ledger.register(e,fp); aid,slug=asset_identity(run,movie_id,e); base=f'{aid}-{slug}'; final=[assets/f'{base}.mp4',assets/f'v{base}.mp4',assets/f'{base}.jpg',assets/f'v{base}.jpg',assets/f'{base}.json']; eid=e['visual_event_id']; expected=(e['end_frame_exclusive']-e['start_frame'])/fps
-        if _complete_package(assets,base):reused+=1; ledger.stage(eid,'finalization','COMPLETE',reused=True); continue
+        # Do not include reframe config here: register() would incorrectly stale
+        # completed horizontal/semantic work.  Vertical gets its own fingerprint.
+        fp=fingerprint({'range':[e['start_frame'],e['end_frame_exclusive']],'shots':e.get('source_shot_ids',[]),'semantic':e.get('visual',{}),'version':'horizontal-v1'}); ledger.register(e,fp); aid,slug=asset_identity(run,movie_id,e); base=f'{aid}-{slug}'; final=[assets/f'{base}.mp4',assets/f'v{base}.mp4',assets/f'{base}.jpg',assets/f'v{base}.jpg',assets/f'{base}.json']; eid=e['visual_event_id']; expected=(e['end_frame_exclusive']-e['start_frame'])/fps; reframe_fp=reframe_fingerprint(e,shots,width,height)
+        if _vertical_reuse_valid(assets,base,reframe_fp): reused+=1; ledger.stage(eid,'finalization','COMPLETE',reused=True,reframe_fingerprint=reframe_fp); continue
         stage=work/eid; stage.mkdir(parents=True,exist_ok=True); h,v,ht,vt,md=[stage/x.name for x in final]; old=pilot/'exports'/f"{e['candidate_id']}.mp4"; ledger.stage(eid,'horizontal_export','RUNNING')
-        if old.exists():shutil.copy2(old,h)
+        # A stale package can still donate its verified horizontal asset, but no
+        # stale vertical member may remain in assets during replacement.
+        if (assets/f'{base}.mp4').exists(): shutil.copy2(assets/f'{base}.mp4',h); _retire_package(assets,base); ledger.stage(eid,'horizontal_export','COMPLETE',reused=True)
+        elif old.exists():shutil.copy2(old,h)
         else:subprocess.run(ffmpeg_export_command(movie,e,h,fps),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         horizontal=probe(h,width,height,expected,e['end_frame_exclusive']-e['start_frame']); ledger.stage(eid,'horizontal_validation','COMPLETE' if horizontal['status']=='PASS' else 'FAILED_RETRYABLE',validation=horizontal['status'])
         if horizontal['status']!='PASS':continue
         vertical=None; plan=[]
         for attempt,strategy in enumerate(('subject_focus','interaction_aware'),1):
-            plan=build_shot_crop_plan(h,e,shots,width,height,strategy=strategy); v.unlink(missing_ok=True); ledger.stage(eid,'vertical_reframe','RUNNING',attempt=attempt,strategy=strategy,plan=plan); render_vertical(h,v,e,plan); vertical=validate_vertical(v,expected,plan,e)
+            plan=build_shot_crop_plan(h,e,shots,width,height,strategy=strategy); v.unlink(missing_ok=True); ledger.stage(eid,'vertical_reframe','RUNNING',attempt=attempt,strategy=strategy,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp,plan=plan); render_vertical(h,v,e,plan); vertical=validate_vertical(v,expected,plan,e)
             if vertical['status']=='PASS':break
-        ledger.stage(eid,'vertical_validation','COMPLETE' if vertical and vertical['status']=='PASS' else 'FAILED_RETRYABLE',validation=vertical)
+        ledger.stage(eid,'vertical_validation','COMPLETE' if vertical and vertical['status']=='PASS' else 'FAILED_RETRYABLE',reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp,validation=vertical)
         if not vertical or vertical['status']!='PASS':review+=1; v.unlink(missing_ok=True); ledger.stage(eid,'finalization','REVIEW_VERTICAL',validation=vertical); continue
-        htime=thumbnail(h,ht); vtime=thumbnail(v,vt); data={'asset_metadata_v1':'asset_metadata_v1','asset':{'id':aid,'slug':slug,'source_asset_id':eid,'source_movie_id':movie_id},'media':{'filename':h.name,'sha256':sha256_file(h),'duration_seconds':expected,'width':width,'height':height,'fps':fps,'orientation':'landscape','aspect_ratio':'other','horizontal':{'file':h.name,'thumbnail':ht.name,'validated':True},'vertical':{'file':v.name,'thumbnail':vt.name,'sha256':sha256_file(v),'aspect_ratio':'3:4','validated':True}},'analysis':{'semantic_ready':True,'final_asset_semantics_validated':True,'source_video_analyzed':True,'profile':'pilot-finalization-3e.1','producer':'movie_broll','producer_version':'0.1.0','generated_at':'durable'},'source_timeline':{'start_seconds':e['start_seconds'],'end_seconds':e['end_seconds'],'visual_event_id':eid,'shot_ids':e.get('source_shot_ids',[])},'visual':{'source_horizontal':e.get('visual',{}),'people':e.get('people',[]),'relationships':e.get('relationships',[]),'final_vertical':{'reframe':{'shots':plan,'attempts':attempt},'validation':vertical}},'audio':{'speech_present':{'value':False,'source':'export_contract','confidence':1.0}},'narrative':e.get('narrative',{}),'editorial':e.get('editorial',{}),'export':{'orientation':'landscape','aspect_ratio':'other','reframe_applied':True,'reframe_profile':'local shot-aware subject track 3:4 crop'},'thumbnail':{'filename':ht.name,'timestamp_seconds':htime,'vertical_filename':vt.name,'vertical_timestamp_seconds':vtime}}; write_json(md,data)
+        htime=thumbnail(h,ht); ledger.stage(eid,'horizontal_thumbnail','COMPLETE'); vtime=thumbnail(v,vt); ledger.stage(eid,'vertical_thumbnail','COMPLETE',reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp); data={'asset_metadata_v1':'asset_metadata_v1','asset':{'id':aid,'slug':slug,'source_asset_id':eid,'source_movie_id':movie_id},'media':{'filename':h.name,'sha256':sha256_file(h),'duration_seconds':expected,'width':width,'height':height,'fps':fps,'orientation':'landscape','aspect_ratio':'other','horizontal':{'file':h.name,'thumbnail':ht.name,'validated':True},'vertical':{'file':v.name,'thumbnail':vt.name,'sha256':sha256_file(v),'aspect_ratio':'3:4','validated':True}},'analysis':{'semantic_ready':True,'final_asset_semantics_validated':True,'source_video_analyzed':True,'profile':'pilot-finalization-3e.2','producer':'movie_broll','producer_version':'0.1.0','generated_at':'durable'},'source_timeline':{'start_seconds':e['start_seconds'],'end_seconds':e['end_seconds'],'visual_event_id':eid,'shot_ids':e.get('source_shot_ids',[])},'visual':{'source_horizontal':e.get('visual',{}),'people':e.get('people',[]),'relationships':e.get('relationships',[]),'final_vertical':{'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'shot_focus_schema_version':SHOT_FOCUS_SCHEMA_VERSION,'local_detector_version':LOCAL_DETECTOR_VERSION,'reframe_fingerprint':reframe_fp,'reframe':{'shots':plan,'attempts':attempt},'validation':vertical}},'audio':{'speech_present':{'value':False,'source':'export_contract','confidence':1.0}},'narrative':e.get('narrative',{}),'editorial':e.get('editorial',{}),'export':{'orientation':'landscape','aspect_ratio':'other','reframe_applied':True,'reframe_profile':'local shot-aware subject track 3:4 crop'},'thumbnail':{'filename':ht.name,'timestamp_seconds':htime,'vertical_filename':vt.name,'vertical_timestamp_seconds':vtime}}; write_json(md,data)
         for src,dst in zip((h,v,ht,vt,md),final):shutil.move(str(src),dst)
         old.unlink(missing_ok=True); ledger.stage(eid,'metadata','COMPLETE',path=str(final[-1])); ledger.stage(eid,'cleanup','COMPLETE',removed_bytes=safe_cleanup(work,keep_debug_artifacts)); ledger.stage(eid,'finalization','COMPLETE'); completed+=1
     final_bytes=sum(x.stat().st_size for x in assets.glob('*') if x.is_file()); temp_bytes=sum(x.stat().st_size for x in work.rglob('*') if x.is_file()); ledger.summary(status='COMPLETE',finalization_complete=completed,finalization_review=review,disk={'final_assets_bytes':final_bytes,'temporary_bytes':temp_bytes}); return {'status':'COMPLETE','completed':completed,'review':review,'reused':reused,'assets':assets,'review_dir':review_dir}

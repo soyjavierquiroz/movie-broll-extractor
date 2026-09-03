@@ -106,7 +106,7 @@ def test_probe_validation_mock(monkeypatch,tmp_path):
     assert probe(p,1720,720,5)['status']=='PASS'
 
 def _semantic(decision='KEEP'):
-    return {'visual':{'summary_es':'Una persona mira una puerta','subjects':['persona'],'objects':['puerta'],'actions':['mirar una puerta'],'people_count_estimate':'1','setting':'interior','visible_interactions':[],'visible_emotions':['neutral'],'people':[{'presentation':'unclear','apparent_age_group':'unclear','frame_role':'primary','position':'center'}],'primary_subject_position':'center','primary_subject_description':'persona','visual_focus':'persona y puerta'},'relationships':[],'editorial':{'standalone_meaning_es':'Una persona espera ante una puerta','reusable_broll':True,'action_or_moment_complete':'true','use_cases_es':['esperar ante una puerta'],'negative_use_cases_es':['no afirmar una llamada'],'search_terms_es':['esperar'],'editorial_confidence':'high','reason':'acción visible','decision':decision}}
+    return {'visual':{'summary_es':'Una persona mira una puerta','subjects':['persona'],'objects':['puerta'],'actions':['mirar una puerta'],'people_count_estimate':'1','setting':'interior','visible_interactions':[],'visible_emotions':['neutral'],'people':[{'presentation':'unclear','apparent_age_group':'unclear','frame_role':'primary','position':'center'}],'primary_subject_position':'center','primary_subject_description':'persona','visual_focus':'persona y puerta','shot_focus_plan':[{'shot_id':'S1','focus_subject':'environment','focus_reason':'puerta','preserve_secondary_subject':False,'interaction_requires_both':False}]},'relationships':[],'editorial':{'standalone_meaning_es':'Una persona espera ante una puerta','reusable_broll':True,'action_or_moment_complete':'true','use_cases_es':['esperar ante una puerta'],'negative_use_cases_es':['no afirmar una llamada'],'search_terms_es':['esperar'],'editorial_confidence':'high','reason':'acción visible','decision':decision}}
 
 def test_frame_bounds_are_authoritative_and_no_blind_offset(tmp_path):
     cmd=ffmpeg_export_command(Path('movie.mp4'),{'start_frame':240,'end_frame_exclusive':360},tmp_path/'x.mp4',24)
@@ -131,7 +131,7 @@ def test_semantic_checkpoint_reuse_and_reframe_metadata(tmp_path):
     identity={'window_id':'SW_01',**c}
     (tmp_path/'BRC_0001.json').write_text(json.dumps({**identity,'candidate_identity':identity,'model':'gemini-3.6-flash','semantic_schema_version':'broll_semantics_v2','semantic_prompt_version':'broll_semantic_prompt_v2','response':_semantic()}))
     response=b._semantic_checkpoint(tmp_path/'BRC_0001.json',c,'gemini-3.6-flash','SW_01')
-    assert response['visual']['primary_subject_position']=='center'
+    assert response is None  # old schema lacks the required per-shot focus plan
     assert b._semantic_checkpoint(tmp_path/'BRC_0001.json',c,'gemini-3.6-flash','SW_02') is None
 
 def test_selected_window_flows_to_isolated_output_and_semantic_checkpoint(monkeypatch,tmp_path):

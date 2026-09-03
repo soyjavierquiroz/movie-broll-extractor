@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import cv2
 import numpy as np
-from movie_broll.finalization import _remove_incomplete_assets, _shot_validation, asset_identity, build_shot_crop_plan, crop_x, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, validate_vertical
+from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, validate_vertical
 
 def event(position='left', people=None, interaction=None):
     return {'visual_event_id':'VE_000123','start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.,'source_shot_ids':['S1','S2'],
@@ -83,3 +83,18 @@ def test_incomplete_asset_is_not_left_in_asset_hub(tmp_path):
     for name in ('vrc002-y.mp4','rc002-y.jpg','vrc002-y.jpg','rc002-y.json'): (assets/name).write_bytes(b'x')
     _remove_incomplete_assets(assets)
     assert not (assets/'rc001-x.mp4').exists() and len(list(assets.iterdir()))==5
+
+def test_required_focus_missing_is_never_safe_or_pass():
+    value=_shot_validation({'shot_id':'S1','focus_subject':'woman','required_person_focus':True,'directive_available':True,'focus_bbox':None,'subject_bboxes':[],'crop_width':90,'source_width':160,'x':0,'anchors':[],'strategy':'subject_focus','action_preserved':True})
+    assert not value['focus_subject_present'] and not value['focus_subject_safe'] and value['status'] == 'FAIL'
+
+def test_reframe_fingerprint_is_vertical_only_and_rejects_old_package(tmp_path):
+    e=event(); e['visual']['shot_focus_plan']=[{'shot_id':'S1','focus_subject':'man','focus_reason':'speaker','preserve_secondary_subject':False,'interaction_requires_both':False}]
+    shots={'S1':{'start_seconds':0,'end_seconds':1}}; first=reframe_fingerprint(e,shots,160,120)
+    assert first == reframe_fingerprint(e,shots,160,120)
+    assets=tmp_path/'assets'; assets.mkdir(); base='rc001-x'
+    for n in (f'{base}.mp4',f'v{base}.mp4',f'{base}.jpg',f'v{base}.jpg'): (assets/n).write_bytes(b'x')
+    (assets/f'{base}.json').write_text(json.dumps({'visual':{'final_vertical':{'reframe_algorithm_version':'old','reframe_fingerprint':'old'}}}))
+    assert not _vertical_reuse_valid(assets,base,first)
+    (assets/f'{base}.json').write_text(json.dumps({'visual':{'final_vertical':{'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'reframe_fingerprint':first}}}))
+    assert _vertical_reuse_valid(assets,base,first)

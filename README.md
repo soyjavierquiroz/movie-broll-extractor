@@ -55,3 +55,13 @@ Chunks advance by 540 seconds (a 600-second window with 60 seconds overlap). A c
 Future phases flow from source inspection to shots, scene/context blocks, visual events, candidates, editorial decisions, and final MP4/JPG plus `asset_metadata_v1` JSON. The schemas directory establishes those contracts now. `asset_metadata_v1` represents independently exported assets in any supported orientation.
 
 Keep this project simple: good enough is enough, route of least resistance, manifest first, quality over quantity. Do not modify `/opt/cortadora` or `/opt/apps/kurukin-asset-hub`; they are separate systems.
+## Local vertical reframing
+
+Vertical reframing is per technical source shot. The semantic event request returns a
+bounded `shot_focus_plan`; it is not one provider request per shot. CPU geometry uses
+local face detection and, when installed, the standalone YOLO ONNX model at
+`cache/models/movie-broll/yolov5nu.onnx`. No model or cache is read from another
+application. Missing required person geometry is sent to `REVIEW_VERTICAL`, never
+silently passed. `REFRAME_ALGORITHM_VERSION` is stored in the vertical fingerprint,
+metadata, validation, and thumbnail-dependent package reuse path, so a reframe change
+reprocesses only vertical outputs while retaining completed semantic and horizontal work.

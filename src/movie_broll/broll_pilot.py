@@ -11,7 +11,7 @@ from .processing_ledger import ProcessingLedger, fingerprint
 from .broll_semantics import GeminiBrollSemanticProvider, PROMPT as SEMANTIC_PROMPT, SemanticProvider, validate_response
 
 PILOT_WINDOW="SW_02"; SAMPLE_FPS=3.0; KEEP=70; REVIEW=50
-SEMANTIC_SCHEMA_VERSION="broll_semantics_v2"; SEMANTIC_PROMPT_VERSION="broll_semantic_prompt_v2"
+SEMANTIC_SCHEMA_VERSION="broll_semantics_v3"; SEMANTIC_PROMPT_VERSION="broll_semantic_prompt_v3"
 STRUCTURAL_SCORING_VERSION="visual_event_duration_v1"
 
 def _root(input_dir:Path)->Path: return input_dir.resolve().parents[1]
@@ -153,7 +153,7 @@ def candidates(shots:list[dict[str,Any]])->list[dict[str,Any]]:
         if len(set(y for x in part for y in x['narrative_segment_ids'])) == 1: reasons.append('same_narrative_segment')
         if float(np.mean([x.get('subtitle_occupancy_ratio',0) for x in part])) >= .22: reasons.append('subtitle_continuity')
         event_hint='conversation' if 'subtitle_continuity' in reasons and len(part)>1 else 'interaction' if len(part)>1 else 'action'
-        c={'start_frame':int(part[0].get('start_frame', round(a*24))), 'end_frame_exclusive':int(part[-1].get('end_frame_exclusive',round(b*24))), 'start_seconds':_num(a),'end_seconds':_num(b),'duration_seconds':_num(b-a),'source_shot_ids':[x['shot_id'] for x in part],'narrative_segment_ids':list(dict.fromkeys(y for x in part for y in x['narrative_segment_ids'])),'event_type_hint':event_hint,'grouping_reason':reasons,'structural_scoring_version':STRUCTURAL_SCORING_VERSION,'signals':{k:_num(v) for k,v in signals.items()}}
+        c={'start_frame':int(part[0].get('start_frame', round(a*24))), 'end_frame_exclusive':int(part[-1].get('end_frame_exclusive',round(b*24))), 'start_seconds':_num(a),'end_seconds':_num(b),'duration_seconds':_num(b-a),'source_shot_ids':[x['shot_id'] for x in part],'technical_shots':[{'shot_id':x['shot_id'],'start_seconds':x['start_seconds'],'end_seconds':x['end_seconds']} for x in part],'narrative_segment_ids':list(dict.fromkeys(y for x in part for y in x['narrative_segment_ids'])),'event_type_hint':event_hint,'grouping_reason':reasons,'structural_scoring_version':STRUCTURAL_SCORING_VERSION,'signals':{k:_num(v) for k,v in signals.items()}}
         c['score']=score_candidate(c); structural='KEEP' if c['score']['total']>=KEEP else 'REVIEW' if c['score']['total']>=REVIEW else 'REJECT'; c['structural_decision']=structural; c['editorial']={'decision':structural, 'status':'PROVISIONAL'}; result.append(c)
     return dedupe(result)
 
@@ -219,13 +219,18 @@ def _narrative_context(segments:list[dict[str,Any]], start:float,end:float)->dic
     return {'segment_ids':[x['segment_id'] for x in selected], 'summary_es':collect('narrative_summary_es','narrative_summary','summary_es'), 'tone':collect('narrative_tone','tone'), 'themes':collect('themes'), 'interaction_context':collect('interaction_context','narrative_function'), 'literal_transcription':False}
 
 def candidate_contact_sheet(movie:Path,c:dict[str,Any],fps:float)->bytes:
-    """Build an in-memory five-frame sheet; never samples outside [start,end)."""
-    start,end=int(c['start_frame']),int(c['end_frame_exclusive']); positions=[start, start+(end-start)//4, start+(end-start)//2, start+3*(end-start)//4, end-1]
+    """Bounded representative frames, labelled with technical-shot identity/order."""
+    start,end=int(c['start_frame']),int(c['end_frame_exclusive']); technical=c.get('technical_shots',[])
+    if technical:
+        selected=technical if len(technical)<=8 else [technical[round(i*(len(technical)-1)/7)] for i in range(8)]
+        labelled=[(str(x['shot_id']),round(((float(x['start_seconds'])+float(x['end_seconds']))/2)*fps)) for x in selected]
+    else:
+        positions=[start, start+(end-start)//4, start+(end-start)//2, start+3*(end-start)//4, end-1]; labelled=[(f'SHOT {i+1}',p) for i,p in enumerate(positions)]
     cap=cv2.VideoCapture(str(movie)); frames=[]
-    for frame_no in positions:
+    for label,frame_no in labelled:
         cap.set(cv2.CAP_PROP_POS_FRAMES,frame_no); ok,frame=cap.read()
         if not ok: cap.release(); raise RuntimeError(f"cannot decode candidate frame {frame_no}")
-        frames.append(cv2.resize(frame,(320,180)))
+        frame=cv2.resize(frame,(320,180)); cv2.putText(frame,label,(8,20),cv2.FONT_HERSHEY_SIMPLEX,.5,(255,255,255),1,cv2.LINE_AA); frames.append(frame)
     cap.release(); ok, encoded=cv2.imencode('.jpg',cv2.hconcat(frames),[cv2.IMWRITE_JPEG_QUALITY,85])
     if not ok: raise RuntimeError('cannot encode candidate contact sheet')
     return encoded.tobytes()
@@ -296,7 +301,7 @@ def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative
         else:
             try:
                 ledger.stage(c['visual_event_id'],'semantic','RUNNING',model=model,candidate_fingerprint=event_fp)
-                sheet=candidate_contact_sheet(movie,c,fps); response_obj=active.generate(SEMANTIC_PROMPT,{'window_id':window_id,'candidate_id':c['candidate_id'],'candidate_identity':{'window_id':window_id,'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive']},'source_shot_ids':c['source_shot_ids'],'narrative':c['narrative'],'srt_context':c['srt_context'],'instruction':'Images are visual authority; context is separate narrative evidence. Return at most one optional focus directive for each listed technical shot; do not request more images.'},sheet); errors=validate_response(response_obj.data)
+                sheet=candidate_contact_sheet(movie,c,fps); response_obj=active.generate(SEMANTIC_PROMPT,{'window_id':window_id,'candidate_id':c['candidate_id'],'candidate_identity':{'window_id':window_id,'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive']},'source_shot_ids':c['source_shot_ids'],'technical_shots':c.get('technical_shots',[]),'narrative':c['narrative'],'srt_context':c['srt_context'],'instruction':'Images are visual authority. Each labelled representative is one source shot. Return exactly one shot_focus_plan directive for each listed technical shot; this is the same event request, never a request per shot.'},sheet); errors=validate_response(response_obj.data)
                 if errors: raise ValueError('; '.join(errors))
                 response=response_obj.data; identity={'window_id':window_id,'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive']}; write_json(cp,{**identity,'candidate_identity':identity,'visual_event_id':c['visual_event_id'],'candidate_fingerprint':event_fp,'model':model,'semantic_schema_version':SEMANTIC_SCHEMA_VERSION,'semantic_prompt_version':SEMANTIC_PROMPT_VERSION,'response':response,'usage':response_obj.usage}); ledger.stage(c['visual_event_id'],'semantic','COMPLETE',checkpoint=str(cp),model=model,candidate_fingerprint=event_fp); requests+=1
                 for name,value in response_obj.usage.items():
