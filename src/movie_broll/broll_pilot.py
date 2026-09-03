@@ -11,7 +11,7 @@ from .processing_ledger import ProcessingLedger, fingerprint
 from .broll_semantics import GeminiBrollSemanticProvider, PROMPT as SEMANTIC_PROMPT, SemanticProvider, validate_response
 
 PILOT_WINDOW="SW_02"; SAMPLE_FPS=3.0; KEEP=70; REVIEW=50
-SEMANTIC_SCHEMA_VERSION="broll_semantics_v3"; SEMANTIC_PROMPT_VERSION="broll_semantic_prompt_v3"
+SEMANTIC_SCHEMA_VERSION="broll_semantics_v4"; SEMANTIC_PROMPT_VERSION="broll_semantic_prompt_v4"
 STRUCTURAL_SCORING_VERSION="visual_event_duration_v1"
 
 def _root(input_dir:Path)->Path: return input_dir.resolve().parents[1]

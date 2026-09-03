@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import cv2
 import numpy as np
-from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, validate_vertical
+from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, _directive, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, validate_vertical
 
 def event(position='left', people=None, interaction=None):
     return {'visual_event_id':'VE_000123','start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.,'source_shot_ids':['S1','S2'],
@@ -96,5 +96,25 @@ def test_reframe_fingerprint_is_vertical_only_and_rejects_old_package(tmp_path):
     for n in (f'{base}.mp4',f'v{base}.mp4',f'{base}.jpg',f'v{base}.jpg'): (assets/n).write_bytes(b'x')
     (assets/f'{base}.json').write_text(json.dumps({'visual':{'final_vertical':{'reframe_algorithm_version':'old','reframe_fingerprint':'old'}}}))
     assert not _vertical_reuse_valid(assets,base,first)
-    (assets/f'{base}.json').write_text(json.dumps({'visual':{'final_vertical':{'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'reframe_fingerprint':first}}}))
+    (assets/f'{base}.json').write_text(json.dumps({'visual':{'final_vertical':{'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'reframe_fingerprint':first}}}))
     assert _vertical_reuse_valid(assets,base,first)
+
+def test_sequence_interaction_allows_safe_reverse_shots_and_ots():
+    base={'shot_id':'S1','focus_subject':'man','required_person_focus':True,'directive_available':True,'focus_bbox':{'x':20,'y':20,'width':20,'height':30},'subject_bboxes':[],'crop_width':90,'source_width':160,'x':0,'anchors':[],'strategy':'subject_focus','action_preserved':True,'review_required':True}
+    man=_shot_validation(base|{'interaction_requirement':'sequence'})
+    woman=_shot_validation(base|{'shot_id':'S2','focus_subject':'woman','interaction_requirement':'sequence'})
+    assert man['status'] == woman['status'] == 'PASS' and man['interaction_preserved']
+    simultaneous=_shot_validation(base|{'interaction_requirement':'simultaneous'})
+    assert simultaneous['status'] == 'FAIL' and not simultaneous['interaction_preserved']
+
+def test_legacy_conversation_directive_defaults_to_sequence_not_simultaneous():
+    e=event(interaction=['conversation']); e['visual']['actions']=['hablar']; e['visual']['shot_focus']=[{'shot_id':'S1','focus_subject':'man','focus_reason':'habla','preserve_interaction':True}]
+    assert _directive(e,{'shot_id':'S1'})['interaction_requirement'] == 'sequence'
+    e['visual']['actions']=['abrazo']; assert _directive(e,{'shot_id':'S1'})['interaction_requirement'] == 'simultaneous'
+
+def test_validation_version_invalidates_old_vertical_package(tmp_path):
+    e=event(); shots={'S1':{'start_seconds':0,'end_seconds':1}}; fp=reframe_fingerprint(e,shots,160,120); assets=tmp_path/'assets'; assets.mkdir(); base='rc001-x'
+    for n in (f'{base}.mp4',f'v{base}.mp4',f'{base}.jpg',f'v{base}.jpg'): (assets/n).write_bytes(b'x')
+    (assets/f'{base}.json').write_text(json.dumps({'visual':{'final_vertical':{'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'reframe_fingerprint':fp,'vertical_validation_version':'old'}}}))
+    assert not _vertical_reuse_valid(assets,base,fp)
+    assert VERTICAL_VALIDATION_VERSION != 'old'
