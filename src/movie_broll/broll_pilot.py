@@ -26,6 +26,26 @@ def discover(input_dir:Path, window_id:str=PILOT_WINDOW)->dict[str,Path|dict[str
     srt=next((input_dir/x for x in ('subtitles.srt',f'{input_dir.name}.srt') if (input_dir/x).is_file()),None)
     if srt is None: raise FileNotFoundError('canonical SRT not found (expected subtitles.srt or movie-id.srt)')
     windows=json.loads(required['windows'].read_text())['windows']; available=[x.get('window_id') for x in windows if x.get('window_id')]
+    # A selector window has no technical artifacts yet.  On the explicit B-roll
+    # command only, add bounded threshold-24 shot detection for that one window;
+    # this never scans the feature and keeps selection/extraction separable.
+    if window_id not in available:
+        registry=root/'runs'/input_dir.name/'pilot_windows.json'
+        selected=None
+        if registry.is_file():
+            selected=next((x for x in json.loads(registry.read_text()).get('windows',[]) if x.get('window_id')==window_id),None)
+        if selected is not None:
+            from .inspect_source import inspect_movie
+            from .visual import Window, build_shots, detect_cuts
+            fps=float(inspect_movie(required['movie'])['video']['fps'])
+            window=Window(window_id,float(selected['start_seconds']),float(selected['end_seconds']),'pilot_selector',list(selected.get('narrative_segment_ids',[])))
+            cuts=detect_cuts(required['movie'],round(window.start_seconds*fps),round(window.end_seconds*fps),24.)
+            additions=build_shots(window,fps,cuts,24.)
+            windows.append(window.as_dict())
+            write_json(required['windows'],{'schema_version':'visual_smoke_windows_v1','windows':windows})
+            with required['shots'].open('a',encoding='utf-8') as handle:
+                for shot in additions: handle.write(json.dumps(shot,separators=(',',':'))+'\n')
+            available.append(window_id)
     window=next((x for x in windows if x.get('window_id')==window_id),None)
     if not window: raise ValueError(f"requested visual smoke window {window_id!r} is absent; available window IDs: {', '.join(available) or '(none)'}")
     profile=json.loads(required['profile'].read_text())
@@ -376,4 +396,7 @@ def run_broll_pilot(input_dir:Path, provider:SemanticProvider|None=None, model:s
     write_json(output/'candidates.json',{'schema_version':'broll_pilot_candidates_v4','semantic_schema_version':SEMANTIC_SCHEMA_VERSION,'semantic_prompt_version':SEMANTIC_PROMPT_VERSION,'window_id':window_id,'frame_semantics':'start_frame inclusive; end_frame_exclusive exclusive','semantic_run':semantic,'candidates':items})
     write_json(output/'export_validation.json',{'schema_version':'broll_pilot_export_validation_v3','frame_semantics':'start_frame inclusive; end_frame_exclusive exclusive','exports':validations})
     keep_items=[x for x in items if x['editorial']['decision']=='KEEP']
-    return {'window':window_id,'shots':len(shots),'candidates':len(items),'visual_events':len(items),'KEEP':len(keep_items),'REVIEW':sum(x['editorial']['decision']=='REVIEW' for x in items),'REJECT':sum(x['editorial']['decision']=='REJECT' for x in items),'exported':len(exported),'average_keep_duration':round(sum(x['duration_seconds'] for x in keep_items)/len(keep_items),2) if keep_items else 0.0,'status':semantic.get('status','COMPLETE'),'semantic_complete':semantic.get('complete',len(items)),'semantic_pending':semantic.get('pending',0),'semantic_reused':semantic.get('reused',0),'output':output}
+    report={'window':window_id,'shots':len(shots),'candidates':len(items),'visual_events':len(items),'KEEP':len(keep_items),'REVIEW':sum(x['editorial']['decision']=='REVIEW' for x in items),'REJECT':sum(x['editorial']['decision']=='REJECT' for x in items),'exported':len(exported),'average_keep_duration':round(sum(x['duration_seconds'] for x in keep_items)/len(keep_items),2) if keep_items else 0.0,'status':semantic.get('status','COMPLETE'),'semantic_complete':semantic.get('complete',len(items)),'semantic_pending':semantic.get('pending',0),'semantic_reused':semantic.get('reused',0),'output':output}
+    from .pilot_selector import mark_attempted
+    mark_attempted(input_dir,window_id,report['status'])
+    return report

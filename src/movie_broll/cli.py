@@ -36,6 +36,8 @@ def main(argv=None):
  broll=pilot_sub.add_parser("broll",help="create B-roll candidates from a persisted visual smoke window")
  broll.add_argument("input_dir",help="input/<movie-id> directory")
  broll.add_argument("--window",default="SW_02",metavar="WINDOW",help="persisted visual smoke window ID (default: SW_02)")
+ select_next=pilot_sub.add_parser("select-next",help="select the next diverse narrative pilot window")
+ select_next.add_argument("input_dir",help="input/<movie-id> directory")
  a=p.parse_args(argv)
  if a.command == "narrative":
   if a.narrative_command == "prepare":
@@ -76,8 +78,21 @@ def main(argv=None):
   except (OSError,ValueError,FileNotFoundError,RuntimeError) as error: print(f"error: {error}",file=sys.stderr); return 2
  if a.command == "pilot":
   try:
+   if a.pilot_command == "select-next":
+    from .pilot_selector import select_next as choose_pilot_window
+    window=choose_pilot_window(Path(a.input_dir))
+    print(f"[pilot-selector] selected: {window['window_id']}")
+    print(f"[pilot-selector] start: {window['start_seconds']:.3f}")
+    print(f"[pilot-selector] end: {window['end_seconds']:.3f}")
+    print(f"[pilot-selector] narrative segment: {', '.join(window['narrative_segment_ids'])}")
+    print(f"[pilot-selector] reason: {', '.join(window['selection_reason'])}")
+    print("[pilot-selector] status: COMPLETE")
+    return 0
    from .broll_pilot import run_broll_pilot
-   report=run_broll_pilot(Path(a.input_dir),window_id=a.window); output=report['output']; print(f"[broll-pilot] window: {report['window']}"); print(f"[broll-pilot] shots: {report['shots']}"); print(f"[broll-pilot] visual events: {report.get('visual_events',report['candidates'])}"); print(f"[broll-pilot] candidates: {report['candidates']}")
+   report=run_broll_pilot(Path(a.input_dir),window_id=a.window)
+   from .pilot_selector import mark_attempted
+   mark_attempted(Path(a.input_dir),a.window,str(report.get('status','COMPLETE')))
+   output=report['output']; print(f"[broll-pilot] window: {report['window']}"); print(f"[broll-pilot] shots: {report['shots']}"); print(f"[broll-pilot] visual events: {report.get('visual_events',report['candidates'])}"); print(f"[broll-pilot] candidates: {report['candidates']}")
    for key in ('KEEP','REVIEW','REJECT','exported'): print(f"[broll-pilot] {key}: {report[key]}")
    print(f"[broll-pilot] average KEEP duration: {report['average_keep_duration']:.1f}s")
    print(f"[broll-pilot] semantic complete: {report.get('semantic_complete',0)}; reused: {report.get('semantic_reused',0)}; pending: {report.get('semantic_pending',0)}")
