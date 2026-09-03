@@ -134,6 +134,15 @@ def test_semantic_checkpoint_reuse_and_reframe_metadata(tmp_path):
     assert response is None  # old schema lacks the required per-shot focus plan
     assert b._semantic_checkpoint(tmp_path/'BRC_0001.json',c,'gemini-3.6-flash','SW_02') is None
 
+def test_shot_focus_compatibility_requires_exact_complete_unique_coverage():
+    import movie_broll.broll_pilot as b
+    candidate={'source_shot_ids':['S1','S2']}
+    response=_semantic(); response['visual']['shot_focus_plan']=[
+        {'shot_id':'S1','focus_subject':'man','focus_reason':'speaker','preserve_secondary_subject':False,'interaction_requirement':'sequence'},
+        {'shot_id':'S2','focus_subject':'woman','focus_reason':'reaction','preserve_secondary_subject':False,'interaction_requirement':'sequence'}]
+    assert b.shot_focus_compatible(response,candidate)
+    response['visual']['shot_focus_plan'][1]['shot_id']='S1'; assert not b.shot_focus_compatible(response,candidate)
+
 def test_selected_window_flows_to_isolated_output_and_semantic_checkpoint(monkeypatch,tmp_path):
     import movie_broll.broll_pilot as b
     inp=tmp_path/'input'/'film'; inp.mkdir(parents=True); (inp/'movie.mp4').write_bytes(b'x'); (inp/'subtitles.srt').write_text('')
@@ -240,7 +249,8 @@ def test_quota_stops_later_events_and_resume_reuses_checkpoints(monkeypatch,tmp_
         def generate(self,*args):
             self.calls.append(args[1]['candidate_id'])
             if self.quota and len(self.calls)==3: raise RuntimeError('429 free tier request quota exceeded')
-            return SemanticResponse(_semantic(),{'prompt_tokens':1,'response_tokens':1,'thinking_tokens':0,'cached_tokens':0,'total_tokens':2})
+            response=_semantic(); response['visual']['shot_focus_plan'][0]['shot_id']=args[1]['source_shot_ids'][0]
+            return SemanticResponse(response,{'prompt_tokens':1,'response_tokens':1,'thinking_tokens':0,'cached_tokens':0,'total_tokens':2})
     first=Provider(True)
     report=b.semantic_validate(items,movie,srt,narrative,tmp_path/'broll-pilot-v1'/'SW_01'/'semantic_checkpoints',24,'SW_01',first)
     assert first.calls==['BRC_0001','BRC_0002','BRC_0003'] and report['status']=='PARTIAL_QUOTA'

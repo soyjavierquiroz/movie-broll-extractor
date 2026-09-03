@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import cv2
 import numpy as np
-from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, _directive, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, validate_vertical
+from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, _directive, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, validate_vertical
 
 def event(position='left', people=None, interaction=None):
     return {'visual_event_id':'VE_000123','start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.,'source_shot_ids':['S1','S2'],
@@ -118,3 +118,18 @@ def test_validation_version_invalidates_old_vertical_package(tmp_path):
     (assets/f'{base}.json').write_text(json.dumps({'visual':{'final_vertical':{'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'reframe_fingerprint':fp,'vertical_validation_version':'old'}}}))
     assert not _vertical_reuse_valid(assets,base,fp)
     assert VERTICAL_VALIDATION_VERSION != 'old'
+
+def test_detector_preflight_rejects_missing_or_incomplete_model(monkeypatch,tmp_path):
+    import movie_broll.finalization as f
+    monkeypatch.setattr(f,'_model_path',lambda:tmp_path/'yolo.onnx')
+    import pytest
+    with pytest.raises(RuntimeError,match='missing or incomplete'): person_detector_preflight(provision=False)
+    (tmp_path/'yolo.onnx').write_bytes(b'bad')
+    with pytest.raises(RuntimeError,match='missing or incomplete'): person_detector_preflight(provision=False)
+
+def test_detector_preflight_loads_backend_and_reports_truth(monkeypatch,tmp_path):
+    import movie_broll.finalization as f
+    path=tmp_path/'yolo.onnx'; path.write_bytes(b'x'*2048); monkeypatch.setattr(f,'_model_path',lambda:path)
+    calls=[]; monkeypatch.setattr(f.cv2.dnn,'readNetFromONNX',lambda value:calls.append(value) or object())
+    value=person_detector_preflight(provision=False)
+    assert calls == [str(path)] and value['loaded'] and not value['inference_executed'] and value['model_path']==str(path)
