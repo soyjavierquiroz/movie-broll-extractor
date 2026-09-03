@@ -199,6 +199,18 @@ def test_yolov5_letterbox_preserves_cinematic_aspect_and_reverses_coordinates():
     original=unletterbox_bbox({'x':100,'y':transform['pad_y']+50,'width':200,'height':100},transform)
     assert 0 <= original['x'] < 1720 and 0 <= original['y'] < 720 and original['width'] > 500
 
+def test_focus_core_allows_large_person_body_but_rejects_lost_critical_region():
+    base={'shot_id':'S1','focus_subject':'woman','required_person_focus':True,'directive_available':True,'focus_bbox':{'x':100,'y':0,'width':900,'height':700},'crop_width':540,'source_width':1720,'x':300,'anchors':[],'strategy':'subject_focus','action_preserved':True,'interaction_requirement':'sequence'}
+    passed=_shot_validation(base)
+    assert passed['full_bbox_clipping'] and not passed['critical_focus_clipping'] and passed['status']=='PASS'
+    failed=_shot_validation(base|{'x':600})
+    assert failed['critical_focus_clipping'] and failed['status']=='FAIL'
+
+def test_action_and_environment_ignore_unrelated_person_bbox_clipping():
+    base={'shot_id':'S1','directive_available':True,'focus_bbox':{'x':0,'y':0,'width':900,'height':700},'crop_width':540,'source_width':1720,'x':300,'anchors':[],'strategy':'subject_focus','action_preserved':True,'interaction_requirement':'none'}
+    assert _shot_validation(base|{'focus_subject':'action_region'})['status']=='PASS'
+    assert _shot_validation(base|{'focus_subject':'environment'})['status']=='PASS'
+
 def test_spatial_focus_association_beats_confidence_and_refuses_ambiguity():
     people=[{'bbox':{'x':10,'y':0,'width':100,'height':200},'confidence':.51},{'bbox':{'x':800,'y':0,'width':100,'height':200},'confidence':.99}]
     assert _choose_target(people,{'focus_position':'left'},1000)['bbox']['x'] == 10

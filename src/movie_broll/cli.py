@@ -85,6 +85,7 @@ def main(argv=None):
     from .finalization import finalize_pilot
     report=finalize_pilot(Path(a.input_dir),a.window)
     print(f"[pilot-finalize] assets: {report['completed']}; review: {report['review']}; reused: {report['reused']}")
+    print(f"[pilot-finalize] reuse: semantic={report.get('semantic_reused',0)} horizontal={report.get('horizontal_reused',0)} vertical={report.get('reused',0)} review={report.get('review_reused',0)}")
     print(f"[pilot-finalize] directory: {report['assets']}")
     print(f"[pilot-finalize] status: {report['status']}")
     return 0 if report['status'] == 'COMPLETE' else 1
