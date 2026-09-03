@@ -11,7 +11,7 @@ from .utils import sha256_file, write_json
 
 MOVIE_CODES={"romper-el-circulo":"rc"}; SAFE_MARGIN=.08
 # This is deliberately persistent: it is part of every vertical-only reuse key.
-REFRAME_ALGORITHM_VERSION="3e.2-shot-focus-face-safe-v1"
+REFRAME_ALGORITHM_VERSION="3e.2.3.4-letterbox-spatial-association-v2"
 SHOT_FOCUS_SCHEMA_VERSION="shot_focus_plan_v1"
 LOCAL_DETECTOR_VERSION="yolov5n-onnx-person+haar-face-v1"
 PERSON_CANDIDATE_CONFIDENCE=.05; PERSON_NMS_IOU=.45
@@ -154,9 +154,14 @@ def _sample_frames(video:Path,start:float,end:float,count:int=5)->list[tuple[flo
 def _choose_target(found:list[dict[str,Any]],direct:dict[str,Any],width:int)->dict[str,Any]|None:
     if not found: return None
     candidates=[x for x in found if not x.get('foreground',False)] or found; faces=[x for x in candidates if x.get('face_visible',False)] or candidates; wanted=str(direct.get('focus_position',direct.get('position',''))).lower()
+    if len(faces)==1: return faces[0]
+    if wanted not in {'left','center','right'}: return None  # no gender/score guess for ambiguous people.
+    desired={'left':width*.25,'center':width*.5,'right':width*.75}[wanted]
+    # Spatial direction is the semantic bridge. Confidence only breaks nearly
+    # identical spatial candidates and can never override the requested side.
     def score(x):
-        b=_bbox(x); c=b['x']+b['width']/2; bonus=1 if wanted and ((wanted=='left' and c<width/2) or (wanted=='right' and c>=width/2)) else 0; return bonus+float(x.get('confidence',.5)),b['width']*b['height']
-    return max(faces,key=score)
+        b=_bbox(x); center=b['x']+b['width']/2; return (abs(center-desired)/width,-float(x.get('confidence',.5)))
+    return min(faces,key=score)
 def _union(boxes:list[dict[str,float]])->dict[str,float]:
     left=min(x['x'] for x in boxes); top=min(x['y'] for x in boxes); right=max(x['x']+x['width'] for x in boxes); bottom=max(x['y']+x['height'] for x in boxes); return {'x':left,'y':top,'width':right-left,'height':bottom-top}
 def _anchor(box:dict[str,float],source:int,crop:int)->float: return max(0.,min(float(source-crop),box['x']+box['width']/2-crop/2))
@@ -284,12 +289,13 @@ def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False)
     for candidate in candidates:
         candidate.setdefault('technical_shots',[{'shot_id':sid,'start_seconds':shots.get(sid,{}).get('start_seconds'),'end_seconds':shots.get(sid,{}).get('end_seconds'),'representative_image_index':i} for i,sid in enumerate(candidate.get('source_shot_ids',[]))])
     incompatible=[x for x in candidates if x.get('editorial',{}).get('decision')=='KEEP' and not shot_focus_compatible({'visual':x.get('visual',{})},x)]
+    semantic_reused=0
     if incompatible:
         srt=next((input_dir/x for x in ('subtitles.srt',f'{movie_id}.srt') if (input_dir/x).is_file()),None); narrative=run/'narrative-v2'/'narrative_map.json'
         if srt is None or not narrative.is_file(): raise RuntimeError('shot-focus semantic refresh requires canonical SRT and narrative map')
-        semantic_validate(incompatible,input_dir/'movie.mp4',srt,narrative,pilot/'semantic_checkpoints',24.,window_id)
-        write_json(candidates_path,{'schema_version':'broll_pilot_candidates_v4','semantic_schema_version':'broll_semantics_v4','semantic_prompt_version':'broll_semantic_prompt_v4','window_id':window_id,'candidates':candidates})
-    movie=input_dir/'movie.mp4'; source=cv2.VideoCapture(str(movie)); width,height=int(source.get(cv2.CAP_PROP_FRAME_WIDTH)),int(source.get(cv2.CAP_PROP_FRAME_HEIGHT)); fps=source.get(cv2.CAP_PROP_FPS) or 24.; source.release(); ledger=ProcessingLedger(run,movie_id,{'finalization_version':'3e.2.3','reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'movie_code':movie_code(run,movie_id)}); completed=review=reused=review_reused=failed_retryable=failed_final=0
+        semantic_reused=semantic_validate(incompatible,input_dir/'movie.mp4',srt,narrative,pilot/'semantic_checkpoints',24.,window_id).get('reused',0)
+        write_json(candidates_path,{'schema_version':'broll_pilot_candidates_v4','semantic_schema_version':'broll_semantics_v5','semantic_prompt_version':'broll_semantic_prompt_v5','window_id':window_id,'candidates':candidates})
+    movie=input_dir/'movie.mp4'; source=cv2.VideoCapture(str(movie)); width,height=int(source.get(cv2.CAP_PROP_FRAME_WIDTH)),int(source.get(cv2.CAP_PROP_FRAME_HEIGHT)); fps=source.get(cv2.CAP_PROP_FPS) or 24.; source.release(); ledger=ProcessingLedger(run,movie_id,{'finalization_version':'3e.2.3.4','reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'movie_code':movie_code(run,movie_id)}); completed=review=reused=review_reused=horizontal_reused=failed_retryable=failed_final=0
     if any(e.get('editorial',{}).get('decision')=='KEEP' and e.get('editorial',{}).get('status')=='VALIDATED' for e in candidates): person_detector_preflight()
     for e in candidates:
         if e.get('editorial',{}).get('decision')!='KEEP' or e.get('editorial',{}).get('status')!='VALIDATED':continue
@@ -303,7 +309,7 @@ def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False)
         stage=work/eid; stage.mkdir(parents=True,exist_ok=True); h,v,ht,vt,md=[stage/x.name for x in final]; old=pilot/'exports'/f"{e['candidate_id']}.mp4"; ledger.stage(eid,'horizontal_export','RUNNING')
         # A stale package can still donate its verified horizontal asset, but no
         # stale vertical member may remain in assets during replacement.
-        if (assets/f'{base}.mp4').exists(): shutil.copy2(assets/f'{base}.mp4',h); _retire_package(assets,base); ledger.stage(eid,'horizontal_export','COMPLETE',reused=True)
+        if (assets/f'{base}.mp4').exists(): shutil.copy2(assets/f'{base}.mp4',h); _retire_package(assets,base); horizontal_reused+=1; ledger.stage(eid,'horizontal_export','COMPLETE',reused=True)
         elif old.exists():shutil.copy2(old,h)
         else:subprocess.run(ffmpeg_export_command(movie,e,h,fps),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         horizontal=probe(h,width,height,expected,e['end_frame_exclusive']-e['start_frame']); ledger.stage(eid,'horizontal_validation','COMPLETE' if horizontal['status']=='PASS' else 'FAILED_RETRYABLE',validation=horizontal['status'])
@@ -325,4 +331,4 @@ def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False)
         htime=thumbnail(h,ht); ledger.stage(eid,'horizontal_thumbnail','COMPLETE'); vtime=thumbnail(v,vt); ledger.stage(eid,'vertical_thumbnail','COMPLETE',reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,vertical_validation_version=VERTICAL_VALIDATION_VERSION,reframe_fingerprint=reframe_fp); data={'asset_metadata_v1':'asset_metadata_v1','asset':{'id':aid,'slug':slug,'source_asset_id':eid,'source_movie_id':movie_id},'media':{'filename':h.name,'sha256':sha256_file(h),'duration_seconds':expected,'width':width,'height':height,'fps':fps,'orientation':'landscape','aspect_ratio':'other','horizontal':{'file':h.name,'thumbnail':ht.name,'validated':True},'vertical':{'file':v.name,'thumbnail':vt.name,'sha256':sha256_file(v),'aspect_ratio':'3:4','validated':True}},'analysis':{'semantic_ready':True,'final_asset_semantics_validated':True,'source_video_analyzed':True,'profile':'pilot-finalization-3e.2.2','producer':'movie_broll','producer_version':'0.1.0','generated_at':'durable'},'source_timeline':{'start_seconds':e['start_seconds'],'end_seconds':e['end_seconds'],'visual_event_id':eid,'shot_ids':e.get('source_shot_ids',[])},'visual':{'source_horizontal':e.get('visual',{}),'people':e.get('people',[]),'relationships':e.get('relationships',[]),'final_vertical':{'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'shot_focus_schema_version':SHOT_FOCUS_SCHEMA_VERSION,'local_detector_version':LOCAL_DETECTOR_VERSION,'reframe_fingerprint':reframe_fp,'reframe':{'shots':plan,'attempts':attempt},'validation':vertical}},'audio':{'speech_present':{'value':False,'source':'export_contract','confidence':1.0}},'narrative':e.get('narrative',{}),'editorial':e.get('editorial',{}),'export':{'orientation':'landscape','aspect_ratio':'other','reframe_applied':True,'reframe_profile':'local shot-aware subject track 3:4 crop'},'thumbnail':{'filename':ht.name,'timestamp_seconds':htime,'vertical_filename':vt.name,'vertical_timestamp_seconds':vtime}}; write_json(md,data)
         for src,dst in zip((h,v,ht,vt,md),final):shutil.move(str(src),dst)
         old.unlink(missing_ok=True); (review_dir/f'{base}.json').unlink(missing_ok=True); ledger.stage(eid,'metadata','COMPLETE',path=str(final[-1])); ledger.stage(eid,'cleanup','COMPLETE',removed_bytes=safe_cleanup(work,keep_debug_artifacts)); ledger.stage(eid,'finalization','COMPLETE',decision='PASS',asset_hub_ready=True,reframe_fingerprint=reframe_fp); completed+=1
-    final_bytes=sum(x.stat().st_size for x in assets.glob('*') if x.is_file()); temp_bytes=sum(x.stat().st_size for x in work.rglob('*') if x.is_file()); status='PARTIAL' if failed_retryable or failed_final else 'COMPLETE'; ledger.summary(status=status,final_assets=completed,vertical_review=review,vertical_review_reused=review_reused,vertical_failed_retryable=failed_retryable,vertical_failed_final=failed_final,disk={'final_assets_bytes':final_bytes,'temporary_bytes':temp_bytes}); return {'status':status,'completed':completed,'review':review,'reused':reused,'review_reused':review_reused,'failed_retryable':failed_retryable,'failed_final':failed_final,'assets':assets,'review_dir':review_dir}
+    final_bytes=sum(x.stat().st_size for x in assets.glob('*') if x.is_file()); temp_bytes=sum(x.stat().st_size for x in work.rglob('*') if x.is_file()); status='PARTIAL' if failed_retryable or failed_final else 'COMPLETE'; ledger.summary(status=status,final_assets=completed,vertical_review=review,vertical_reused=reused,vertical_review_reused=review_reused,horizontal_reused=horizontal_reused,semantic_reused=semantic_reused,vertical_failed_retryable=failed_retryable,vertical_failed_final=failed_final,disk={'final_assets_bytes':final_bytes,'temporary_bytes':temp_bytes}); return {'status':status,'completed':completed,'review':review,'reused':reused,'review_reused':review_reused,'horizontal_reused':horizontal_reused,'semantic_reused':semantic_reused,'failed_retryable':failed_retryable,'failed_final':failed_final,'assets':assets,'review_dir':review_dir}

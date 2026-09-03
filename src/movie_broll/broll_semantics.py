@@ -32,7 +32,7 @@ SEMANTIC_SCHEMA: dict[str, Any] = {"type": "object", "properties": {
         "primary_subject_position": {"type": "string", "enum": POSITIONS}, "primary_subject_description": {"type": "string"}, "visual_focus": {"type": "string"},
         "shot_focus_plan": {"type": "array", "items": {"type": "object", "properties": {
             "shot_id": {"type": "string"}, "focus_subject": {"type": "string", "enum": FOCUS_SUBJECTS}, "focus_reason": {"type": "string"}, "preserve_secondary_subject": {"type": "boolean"}, "interaction_requirement": {"type": "string", "enum": INTERACTION_REQUIREMENTS}, "focus_position": {"type": "string", "enum": POSITIONS}
-        }, "required": ["shot_id", "focus_subject", "focus_reason", "preserve_secondary_subject", "interaction_requirement"]}},
+        }, "required": ["shot_id", "focus_subject", "focus_reason", "preserve_secondary_subject", "interaction_requirement", "focus_position"]}},
     }, "required": ["summary_es", "subjects", "objects", "actions", "people_count_estimate", "setting", "visible_interactions", "visible_emotions", "people", "primary_subject_position", "primary_subject_description", "visual_focus", "shot_focus_plan"]},
     "relationships": {"type": "array", "items": {"type": "object", "properties": {
         "type": {"type": "string"}, "source": {"type": "string", "enum": RELATIONSHIP_SOURCES},
@@ -85,7 +85,7 @@ def validate_response(data: dict[str, Any]) -> list[str]:
     errors = [f"visual missing {x}" for x in required_visual if x not in visual] + [f"editorial missing {x}" for x in required_editorial if x not in editorial]
     if visual.get("primary_subject_position") not in POSITIONS: errors.append("invalid subject position")
     plan=visual.get('shot_focus_plan', [])
-    if plan and (not isinstance(plan,list) or any(not isinstance(x,dict) or x.get('focus_subject') not in FOCUS_SUBJECTS or x.get('interaction_requirement') not in INTERACTION_REQUIREMENTS or not all(k in x for k in ('shot_id','focus_reason','preserve_secondary_subject')) for x in plan)): errors.append('invalid shot focus plan')
+    if plan and (not isinstance(plan,list) or any(not isinstance(x,dict) or x.get('focus_subject') not in FOCUS_SUBJECTS or x.get('interaction_requirement') not in INTERACTION_REQUIREMENTS or x.get('focus_position') not in POSITIONS or not all(k in x for k in ('shot_id','focus_reason','preserve_secondary_subject')) for x in plan)): errors.append('invalid shot focus plan')
     for person in visual.get("people", []):
         if not isinstance(person, dict) or person.get("presentation") not in PRESENTATIONS: errors.append("invalid person presentation")
         elif person.get("apparent_age_group") not in AGE_GROUPS: errors.append("invalid person age group")

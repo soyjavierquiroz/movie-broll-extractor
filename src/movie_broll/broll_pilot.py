@@ -11,7 +11,7 @@ from .processing_ledger import ProcessingLedger, fingerprint
 from .broll_semantics import GeminiBrollSemanticProvider, PROMPT as SEMANTIC_PROMPT, SemanticProvider, FOCUS_SUBJECTS, INTERACTION_REQUIREMENTS, validate_response
 
 PILOT_WINDOW="SW_02"; SAMPLE_FPS=3.0; KEEP=70; REVIEW=50
-SEMANTIC_SCHEMA_VERSION="broll_semantics_v4"; SEMANTIC_PROMPT_VERSION="broll_semantic_prompt_v4"
+SEMANTIC_SCHEMA_VERSION="broll_semantics_v5"; SEMANTIC_PROMPT_VERSION="broll_semantic_prompt_v5"
 STRUCTURAL_SCORING_VERSION="visual_event_duration_v1"
 
 def _root(input_dir:Path)->Path: return input_dir.resolve().parents[1]
@@ -272,7 +272,7 @@ def shot_focus_compatible(response:dict[str,Any],candidate:dict[str,Any])->bool:
     expected=list(candidate.get('source_shot_ids',[]))
     if not isinstance(plan,list) or len(plan)!=len(expected): return False
     ids=[x.get('shot_id') for x in plan if isinstance(x,dict)]
-    return len(ids)==len(expected) and set(ids)==set(expected) and len(set(ids))==len(ids) and all(x.get('focus_subject') in FOCUS_SUBJECTS and x.get('interaction_requirement') in INTERACTION_REQUIREMENTS for x in plan)
+    return len(ids)==len(expected) and set(ids)==set(expected) and len(set(ids))==len(ids) and all(x.get('focus_subject') in FOCUS_SUBJECTS and x.get('interaction_requirement') in INTERACTION_REQUIREMENTS and (x.get('focus_subject') not in {'woman','man','multiple_people'} or x.get('focus_position') in {'left','center','right'}) for x in plan)
 
 def _quota_error(error: Exception) -> bool:
     text=str(error).lower()

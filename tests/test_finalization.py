@@ -3,7 +3,7 @@ from pathlib import Path
 import tomllib
 import cv2
 import numpy as np
-from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, _directive, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, letterbox, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, unletterbox_bbox, validate_vertical
+from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, _choose_target, _directive, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, letterbox, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, unletterbox_bbox, validate_vertical
 
 def event(position='left', people=None, interaction=None):
     return {'visual_event_id':'VE_000123','start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.,'source_shot_ids':['S1','S2'],
@@ -64,7 +64,7 @@ def test_reverse_shot_and_interaction_decisions(tmp_path):
     assert plan[0]['x'] < plan[1]['x'] and plan[0]['anchors'][-1]['time'] < plan[1]['start_seconds'] + .5
     fit=_geometry_plan(tmp_path,[{'shot_id':'S1','focus_subject':'both','focus_role':'primary','focus_reason':'shared','preserve_interaction':True}],[{'bbox':{'x':35,'y':20,'width':20,'height':30},'face_visible':True},{'bbox':{'x':75,'y':20,'width':20,'height':30},'face_visible':True}])
     assert not fit[0]['review_required']
-    focal=_geometry_plan(tmp_path,[{'shot_id':'S1','focus_subject':'man','focus_role':'primary','focus_reason':'reaction','preserve_interaction':False}],[{'bbox':{'x':0,'y':20,'width':25,'height':30},'face_visible':True},{'bbox':{'x':130,'y':20,'width':25,'height':30},'face_visible':True}])
+    focal=_geometry_plan(tmp_path,[{'shot_id':'S1','focus_subject':'man','focus_role':'primary','focus_reason':'reaction','preserve_interaction':False,'focus_position':'left'}],[{'bbox':{'x':0,'y':20,'width':25,'height':30},'face_visible':True},{'bbox':{'x':130,'y':20,'width':25,'height':30},'face_visible':True}])
     assert not focal[0]['review_required']
     required=_geometry_plan(tmp_path,[{'shot_id':'S1','focus_subject':'both','focus_role':'primary','focus_reason':'embrace','preserve_interaction':True}],[{'bbox':{'x':0,'y':20,'width':25,'height':30},'face_visible':True},{'bbox':{'x':130,'y':20,'width':25,'height':30},'face_visible':True}])
     assert required[0]['review_required'] and _shot_validation(required[0])['status']=='FAIL'
@@ -198,3 +198,11 @@ def test_yolov5_letterbox_preserves_cinematic_aspect_and_reverses_coordinates():
     assert boxed.shape == (640,640,3) and transform['gain'] == 640/1720 and transform['pad_y'] > 180 and transform['pad_x'] == 0
     original=unletterbox_bbox({'x':100,'y':transform['pad_y']+50,'width':200,'height':100},transform)
     assert 0 <= original['x'] < 1720 and 0 <= original['y'] < 720 and original['width'] > 500
+
+def test_spatial_focus_association_beats_confidence_and_refuses_ambiguity():
+    people=[{'bbox':{'x':10,'y':0,'width':100,'height':200},'confidence':.51},{'bbox':{'x':800,'y':0,'width':100,'height':200},'confidence':.99}]
+    assert _choose_target(people,{'focus_position':'left'},1000)['bbox']['x'] == 10
+    assert _choose_target(people,{'focus_position':'right'},1000)['bbox']['x'] == 800
+    assert _choose_target(people,{'focus_position':'unclear'},1000) is None
+    ots=[{'bbox':{'x':0,'y':0,'width':400,'height':600},'confidence':.99,'foreground':True},people[1]]
+    assert _choose_target(ots,{'focus_position':'right'},1000)['bbox']['x'] == 800

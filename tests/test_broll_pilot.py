@@ -106,7 +106,7 @@ def test_probe_validation_mock(monkeypatch,tmp_path):
     assert probe(p,1720,720,5)['status']=='PASS'
 
 def _semantic(decision='KEEP'):
-    return {'visual':{'summary_es':'Una persona mira una puerta','subjects':['persona'],'objects':['puerta'],'actions':['mirar una puerta'],'people_count_estimate':'1','setting':'interior','visible_interactions':[],'visible_emotions':['neutral'],'people':[{'presentation':'unclear','apparent_age_group':'unclear','frame_role':'primary','position':'center'}],'primary_subject_position':'center','primary_subject_description':'persona','visual_focus':'persona y puerta','shot_focus_plan':[{'shot_id':'S1','focus_subject':'environment','focus_reason':'puerta','preserve_secondary_subject':False,'interaction_requirement':'none'}]},'relationships':[],'editorial':{'standalone_meaning_es':'Una persona espera ante una puerta','reusable_broll':True,'action_or_moment_complete':'true','use_cases_es':['esperar ante una puerta'],'negative_use_cases_es':['no afirmar una llamada'],'search_terms_es':['esperar'],'editorial_confidence':'high','reason':'acción visible','decision':decision}}
+    return {'visual':{'summary_es':'Una persona mira una puerta','subjects':['persona'],'objects':['puerta'],'actions':['mirar una puerta'],'people_count_estimate':'1','setting':'interior','visible_interactions':[],'visible_emotions':['neutral'],'people':[{'presentation':'unclear','apparent_age_group':'unclear','frame_role':'primary','position':'center'}],'primary_subject_position':'center','primary_subject_description':'persona','visual_focus':'persona y puerta','shot_focus_plan':[{'shot_id':'S1','focus_subject':'environment','focus_reason':'puerta','preserve_secondary_subject':False,'interaction_requirement':'none','focus_position':'unclear'}]},'relationships':[],'editorial':{'standalone_meaning_es':'Una persona espera ante una puerta','reusable_broll':True,'action_or_moment_complete':'true','use_cases_es':['esperar ante una puerta'],'negative_use_cases_es':['no afirmar una llamada'],'search_terms_es':['esperar'],'editorial_confidence':'high','reason':'acción visible','decision':decision}}
 
 def test_frame_bounds_are_authoritative_and_no_blind_offset(tmp_path):
     cmd=ffmpeg_export_command(Path('movie.mp4'),{'start_frame':240,'end_frame_exclusive':360},tmp_path/'x.mp4',24)
@@ -138,8 +138,8 @@ def test_shot_focus_compatibility_requires_exact_complete_unique_coverage():
     import movie_broll.broll_pilot as b
     candidate={'source_shot_ids':['S1','S2']}
     response=_semantic(); response['visual']['shot_focus_plan']=[
-        {'shot_id':'S1','focus_subject':'man','focus_reason':'speaker','preserve_secondary_subject':False,'interaction_requirement':'sequence'},
-        {'shot_id':'S2','focus_subject':'woman','focus_reason':'reaction','preserve_secondary_subject':False,'interaction_requirement':'sequence'}]
+        {'shot_id':'S1','focus_subject':'man','focus_reason':'speaker','preserve_secondary_subject':False,'interaction_requirement':'sequence','focus_position':'left'},
+        {'shot_id':'S2','focus_subject':'woman','focus_reason':'reaction','preserve_secondary_subject':False,'interaction_requirement':'sequence','focus_position':'right'}]
     assert b.shot_focus_compatible(response,candidate)
     response['visual']['shot_focus_plan'][1]['shot_id']='S1'; assert not b.shot_focus_compatible(response,candidate)
 
