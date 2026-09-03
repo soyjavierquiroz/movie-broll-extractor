@@ -206,3 +206,12 @@ def test_spatial_focus_association_beats_confidence_and_refuses_ambiguity():
     assert _choose_target(people,{'focus_position':'unclear'},1000) is None
     ots=[{'bbox':{'x':0,'y':0,'width':400,'height':600},'confidence':.99,'foreground':True},people[1]]
     assert _choose_target(ots,{'focus_position':'right'},1000)['bbox']['x'] == 800
+
+def test_geometry_uses_source_absolute_timeline_and_stores_relative_render_boundaries(monkeypatch,tmp_path):
+    import movie_broll.finalization as f
+    calls=[]; frame=np.zeros((720,1720,3),dtype=np.uint8)
+    monkeypatch.setattr(f,'_sample_frames',lambda source,start,end,count:(calls.append((source,start,end,count)) or [(start,frame)]))
+    event={'start_seconds':2018.208333,'end_seconds':2025.0,'source_shot_ids':['S1'],'visual':{'shot_focus_plan':[{'shot_id':'S1','focus_subject':'woman','focus_position':'right','focus_reason':'speaker','interaction_requirement':'sequence'}]}}
+    plan=f.build_shot_crop_plan(tmp_path/'movie.mp4',event,{'S1':{'start_seconds':2024.75,'end_seconds':2025.}},1720,720,detector=lambda _: [{'bbox':{'x':1200,'y':20,'width':100,'height':200},'confidence':.9}],sample_count=3)
+    assert calls[0][1:]==(2024.75,2025.,3) and plan[0]['sampling']['timeline_basis']=='source_absolute'
+    assert abs(plan[0]['render_start_seconds']-6.541667)<.001 and plan[0]['focus_position']=='right'

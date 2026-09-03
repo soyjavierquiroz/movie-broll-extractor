@@ -11,7 +11,7 @@ from .utils import sha256_file, write_json
 
 MOVIE_CODES={"romper-el-circulo":"rc"}; SAFE_MARGIN=.08
 # This is deliberately persistent: it is part of every vertical-only reuse key.
-REFRAME_ALGORITHM_VERSION="3e.2.3.4-letterbox-spatial-association-v2"
+REFRAME_ALGORITHM_VERSION="3e.2.3.5-source-absolute-geometry-v3"
 SHOT_FOCUS_SCHEMA_VERSION="shot_focus_plan_v1"
 LOCAL_DETECTOR_VERSION="yolov5n-onnx-person+haar-face-v1"
 PERSON_CANDIDATE_CONFIDENCE=.05; PERSON_NMS_IOU=.45
@@ -145,12 +145,16 @@ def _directive(event:dict[str,Any],shot:dict[str,Any])->dict[str,Any]:
         physical=('hug','kiss','handshake','handoff','handing','fight','touch','dance','embrace','abrazo','beso','apretón','entrega','tocar')
         requirement='simultaneous' if direct.get('interaction_requires_both') or (direct.get('preserve_interaction') and any(x in text for x in physical)) else 'sequence' if direct.get('preserve_interaction') or event.get('visual',{}).get('visible_interactions') else 'none'
     return {'focus_subject':subject if subject in FOCUS_SUBJECTS else 'unclear','focus_role':direct.get('focus_role','primary'),'interaction_requirement':requirement,'preserve_interaction':requirement=='simultaneous','directive_available':bool(direct),**direct}
-def _sample_frames(video:Path,start:float,end:float,count:int=5)->list[tuple[float,np.ndarray]]:
-    cap=cv2.VideoCapture(str(video)); fps=cap.get(cv2.CAP_PROP_FPS) or 24.; out=[]
+def _sample_frames(source_video:Path,start:float,end:float,count:int=5)->list[tuple[float,np.ndarray]]:
+    """Sample source-absolute timestamps only; an empty decode is a technical error."""
+    cap=cv2.VideoCapture(str(source_video)); fps=cap.get(cv2.CAP_PROP_FPS) or 24.; duration=(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)/fps; out=[]
+    if start<0 or end<=start or start>=duration+.05: cap.release(); raise RuntimeError(f'source-absolute sampling interval [{start:.3f}, {end:.3f}) is outside source media duration {duration:.3f}')
     for t in np.linspace(start+(end-start)*.12,end-(end-start)*.12,max(1,count)):
         cap.set(cv2.CAP_PROP_POS_FRAMES,max(0,round(t*fps))); ok,frame=cap.read()
         if ok: out.append((float(t),frame))
-    cap.release(); return out
+    cap.release()
+    if not out: raise RuntimeError(f'source-absolute sampling decoded zero frames for [{start:.3f}, {end:.3f}) from {source_video}')
+    return out
 def _choose_target(found:list[dict[str,Any]],direct:dict[str,Any],width:int)->dict[str,Any]|None:
     if not found: return None
     candidates=[x for x in found if not x.get('foreground',False)] or found; faces=[x for x in candidates if x.get('face_visible',False)] or candidates; wanted=str(direct.get('focus_position',direct.get('position',''))).lower()
@@ -172,11 +176,13 @@ def _smooth(values:list[tuple[float,float]],crop:int)->list[dict[str,float]]:
     output=[]; old=float(raw[0])
     for t,x in values: old=max(old-crop*.18,min(old+crop*.18,float(x))); output.append({'time':float(t),'x':old})
     return output
-def build_shot_crop_plan(video:Path,event:dict[str,Any],shots:dict[str,dict[str,Any]],width:int,height:int,detector:Callable[[np.ndarray],list[dict[str,Any]]]=detect_people,strategy:str='subject_focus')->list[dict[str,Any]]:
+def build_shot_crop_plan(source_video:Path,event:dict[str,Any],shots:dict[str,dict[str,Any]],width:int,height:int,detector:Callable[[np.ndarray],list[dict[str,Any]]]=detect_people,strategy:str='subject_focus',sample_count:int=5)->list[dict[str,Any]]:
+    """Build geometry from source_movie on source_absolute timeline, never event clips."""
     crop=min(width,round(height*3/4)); plans=[]
     for sid in event.get('source_shot_ids',[]) or ['event']:
         shot=shots.get(sid,{}); start=float(shot.get('start_seconds',event['start_seconds'])); end=float(shot.get('end_seconds',event['end_seconds'])); direct=_directive(event,{**shot,'shot_id':sid}); samples=[]; all_boxes=[]; focus_boxes=[]; action=[]; prior=None
-        for t,frame in _sample_frames(video,start,end):
+        sampled=_sample_frames(source_video,start,end,sample_count)
+        for t,frame in sampled:
             found=[_bbox(x) for x in detector(frame)]; target=_choose_target(found,direct,width)
             # Associate local detections to the prior sample, preventing a
             # different nearby person from stealing focus mid-shot.
@@ -199,7 +205,7 @@ def build_shot_crop_plan(video:Path,event:dict[str,Any],shots:dict[str,dict[str,
         unresolved=required_person and focus is None
         person_count=sum(1 for x in all_boxes if x.get('detector')=='yolo_person'); face_count=sum(1 for x in all_boxes if x.get('face_visible'))
         provenance={'person_detector':dict(_PERSON_RUNTIME or {'model_id':PERSON_MODEL_ID,'loaded':False,'inference_executed':False}),'face_detector':dict(_FACE_RUNTIME)}
-        plans.append({'shot_id':sid,'start_seconds':start,'end_seconds':end,'focus_subject':direct['focus_subject'],'focus_role':direct['focus_role'],'focus_reason':direct.get('focus_reason','semantic shot focus plus local geometry'),'directive_available':direct['directive_available'],'required_person_focus':required_person,'interaction_requirement':direct['interaction_requirement'],'preserve_interaction':preserve,'required_action_region':regions,'focus_bbox':focus,'subject_bboxes':all_boxes,'person_detection_count':person_count,'face_detection_count':face_count,'geometry_resolved':bool(focus),'anchors':anchors,'x':float(np.median([x['x'] for x in anchors])),'crop_width':crop,'source_width':width,'strategy':strategy,'review_required':impossible or unresolved or not direct['directive_available'],'action_preserved':not action or bool(required),'detector_version':LOCAL_DETECTOR_VERSION if detector is detect_people and provenance['person_detector']['loaded'] else 'injected_test_detector','detector_provenance':provenance})
+        plans.append({'shot_id':sid,'start_seconds':start,'end_seconds':end,'render_start_seconds':max(0.,start-float(event['start_seconds'])),'render_end_seconds':max(0.,min(float(event['end_seconds'])-float(event['start_seconds']),end-float(event['start_seconds']))),'sampling':{'media_role':'source_movie','timeline_basis':'source_absolute','requested_start':start,'requested_end':end,'sampled_frame_count':len(sampled)},'focus_subject':direct['focus_subject'],'focus_position':direct.get('focus_position','unclear'),'focus_role':direct['focus_role'],'focus_reason':direct.get('focus_reason','semantic shot focus plus local geometry'),'directive_available':direct['directive_available'],'required_person_focus':required_person,'interaction_requirement':direct['interaction_requirement'],'preserve_interaction':preserve,'required_action_region':regions,'focus_bbox':focus,'subject_bboxes':all_boxes,'person_detection_count':person_count,'face_detection_count':face_count,'geometry_resolved':bool(focus),'anchors':anchors,'x':float(np.median([x['x'] for x in anchors])),'crop_width':crop,'source_width':width,'strategy':strategy,'review_required':impossible or unresolved or not direct['directive_available'],'action_preserved':not action or bool(required),'detector_version':LOCAL_DETECTOR_VERSION if detector is detect_people and provenance['person_detector']['loaded'] else 'injected_test_detector','detector_provenance':provenance})
     return plans
 def shot_crop_plan(event:dict[str,Any],shots:dict[str,dict[str,Any]],width:int,height:int)->list[dict[str,Any]]:
     """No-video compatibility fallback; production calls build_shot_crop_plan."""
@@ -219,7 +225,7 @@ def render_vertical(horizontal:Path,output:Path,event:dict[str,Any],plan:list[di
     while True:
         ok,frame=cap.read()
         if not ok:break
-        absolute=float(event['start_seconds'])+n/fps; rule=next((x for x in plan if x['start_seconds']<=absolute<x['end_seconds']),plan[-1]); x=max(0,min(w-cw,_x_at(rule,absolute))); writer.write(frame[:,x:x+cw]); n+=1
+        relative=n/fps; rule=next((x for x in plan if x.get('render_start_seconds',x['start_seconds'])<=relative<x.get('render_end_seconds',x['end_seconds'])),plan[-1]); x=max(0,min(w-cw,_x_at(rule,float(event['start_seconds'])+relative))); writer.write(frame[:,x:x+cw]); n+=1
     writer.release(); cap.release()
     if not n:temp.unlink(missing_ok=True); raise RuntimeError('vertical reframe decoded no frames')
     try:subprocess.run(['ffmpeg','-y','-i',str(temp),'-map','0:v:0','-c:v','libx264','-crf','19','-an',str(output)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -294,7 +300,7 @@ def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False)
         srt=next((input_dir/x for x in ('subtitles.srt',f'{movie_id}.srt') if (input_dir/x).is_file()),None); narrative=run/'narrative-v2'/'narrative_map.json'
         if srt is None or not narrative.is_file(): raise RuntimeError('shot-focus semantic refresh requires canonical SRT and narrative map')
         semantic_reused=semantic_validate(incompatible,input_dir/'movie.mp4',srt,narrative,pilot/'semantic_checkpoints',24.,window_id).get('reused',0)
-        write_json(candidates_path,{'schema_version':'broll_pilot_candidates_v4','semantic_schema_version':'broll_semantics_v5','semantic_prompt_version':'broll_semantic_prompt_v5','window_id':window_id,'candidates':candidates})
+        write_json(candidates_path,{'schema_version':'broll_pilot_candidates_v4','semantic_schema_version':'broll_semantics_v6','semantic_prompt_version':'broll_semantic_prompt_v6','window_id':window_id,'candidates':candidates})
     movie=input_dir/'movie.mp4'; source=cv2.VideoCapture(str(movie)); width,height=int(source.get(cv2.CAP_PROP_FRAME_WIDTH)),int(source.get(cv2.CAP_PROP_FRAME_HEIGHT)); fps=source.get(cv2.CAP_PROP_FPS) or 24.; source.release(); ledger=ProcessingLedger(run,movie_id,{'finalization_version':'3e.2.3.4','reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'movie_code':movie_code(run,movie_id)}); completed=review=reused=review_reused=horizontal_reused=failed_retryable=failed_final=0
     if any(e.get('editorial',{}).get('decision')=='KEEP' and e.get('editorial',{}).get('status')=='VALIDATED' for e in candidates): person_detector_preflight()
     for e in candidates:
@@ -317,7 +323,7 @@ def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False)
         vertical=None; plan=[]; execution_error=None
         for attempt,strategy in enumerate(('subject_focus','interaction_aware'),1):
             try:
-                plan=build_shot_crop_plan(h,e,shots,width,height,strategy=strategy); v.unlink(missing_ok=True); ledger.stage(eid,'vertical_reframe','RUNNING',attempt=attempt,strategy=strategy,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp,plan=plan); render_vertical(h,v,e,plan); vertical=validate_vertical(v,expected,plan,e)
+                plan=build_shot_crop_plan(movie,e,shots,width,height,strategy=strategy); v.unlink(missing_ok=True); ledger.stage(eid,'vertical_reframe','RUNNING',attempt=attempt,strategy=strategy,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp,plan=plan); render_vertical(h,v,e,plan); vertical=validate_vertical(v,expected,plan,e)
                 ledger.stage(eid,'vertical_reframe','COMPLETE',attempt=attempt,strategy=strategy,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp)
             except (OSError,RuntimeError,cv2.error,subprocess.CalledProcessError) as error:
                 execution_error=str(error); ledger.stage(eid,'vertical_reframe','FAILED_RETRYABLE',attempt=attempt,error=execution_error,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp); break
