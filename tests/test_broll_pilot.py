@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from movie_broll.broll_pilot import (PILOT_WINDOW, _narrative_context, apply_semantic_scarcity,
     boundary_validation, candidates, dedupe, discover, ffmpeg_export_command, generate_groups,
-    probe, review_reel_command, score_candidate)
+    probe, review_reel_command, score_candidate, _duration_fit)
 from movie_broll.cli import main
 from movie_broll.broll_semantics import validate_response
 
@@ -74,6 +74,19 @@ def test_candidate_order_scores_and_decisions(monkeypatch):
     assert all(0<=x['score']['total']<=100 and set(x['score'])=={'duration_fit','visual_quality','continuity','motion_usefulness','structural_simplicity','total'} for x in out)
     assert score_candidate({'duration_seconds':7,'source_shot_ids':['x'],'signals':{'sharpness':120,'brightness':110,'near_black_fraction':0,'subtitle_occupancy':0,'visual_continuity':1,'motion':12}})['total']>=70
     assert candidates(xs)==candidates(xs) # stable IDs and no random scoring
+
+def test_adaptive_visual_event_duration_scoring_is_smooth_and_type_aware():
+    conversation=lambda seconds: _duration_fit(seconds,'conversation')
+    assert conversation(13)==25 and conversation(14.8)==25 and conversation(15)==25
+    assert 0 < conversation(17.3) < conversation(15)
+    assert conversation(19) < conversation(17.3) and conversation(27) < conversation(19)
+    assert _duration_fit(5,'reaction')==25
+    assert _duration_fit(5,'action')==25 and _duration_fit(13,'action') < _duration_fit(13,'conversation')
+
+def test_conversation_duration_is_not_structural_garbage():
+    signals={'sharpness':120,'brightness':110,'near_black_fraction':0,'subtitle_occupancy':.2,'visual_continuity':.9,'motion':12}
+    score=score_candidate({'duration_seconds':14.8,'event_type_hint':'conversation','source_shot_ids':['a','b'],'signals':signals})
+    assert score['duration_fit']==25 and score['total']>=70
 
 def test_technical_dedupe_retains_candidates_for_semantic_audit():
     def item(ids,score,start): return {'source_shot_ids':ids,'score':{'total':score},'editorial':{'decision':'KEEP'},'start_seconds':start,'end_seconds':start+1}

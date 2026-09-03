@@ -12,6 +12,7 @@ from .broll_semantics import GeminiBrollSemanticProvider, PROMPT as SEMANTIC_PRO
 
 PILOT_WINDOW="SW_02"; SAMPLE_FPS=3.0; KEEP=70; REVIEW=50
 SEMANTIC_SCHEMA_VERSION="broll_semantics_v2"; SEMANTIC_PROMPT_VERSION="broll_semantic_prompt_v2"
+STRUCTURAL_SCORING_VERSION="visual_event_duration_v1"
 
 def _root(input_dir:Path)->Path: return input_dir.resolve().parents[1]
 def _overlap(a:float,b:float,c:float,d:float)->float: return max(0.,min(b,d)-max(a,c))
@@ -95,8 +96,27 @@ def generate_groups(shots:list[dict[str,Any]])->list[list[int]]:
         i+=1
     return groups
 
+def _duration_fit(duration_seconds:float, event_type_hint:str='mixed')->float:
+    """Smooth, event-aware provisional duration evidence (maximum 25 points)."""
+    d=max(0.,float(duration_seconds)); hint=event_type_hint.lower()
+    ranges={
+        'reaction':(3.,7.,10.), 'action':(4.,9.,12.),
+        'movement':(5.,10.,14.), 'activity':(5.,10.,14.),
+        'conversation':(7.,15.,18.), 'interaction':(7.,15.,18.),
+    }
+    low,high,allowed=ranges.get(hint,(5.,10.,15.))
+    if low<=d<=high: return 25.
+    if d<low:
+        # Useful short evidence fades gently rather than being binary.
+        return 25*(.45+.55*d/low)
+    if d<=allowed:
+        # Long conversations/interactions remain legitimate, just less efficient.
+        return 25*(1-.35*(d-high)/(allowed-high))
+    # No cliff at 15/18 seconds: progressively discount overly broad events.
+    return max(0.,25*.65*(1-(d-allowed)/max(8.,allowed)))
+
 def score_candidate(candidate:dict[str,Any])->dict[str,float]:
-    d=candidate['duration_seconds']; duration=25*max(0.,1-abs(d-7)/8)
+    d=candidate['duration_seconds']; duration=_duration_fit(d,str(candidate.get('event_type_hint','mixed')))
     sig=candidate['signals']; quality=25*(.45*min(1,sig['sharpness']/150)+.35*(1-abs(sig['brightness']-110)/145)+.20*(1-sig['near_black_fraction']))
     continuity=20*(.6*sig['visual_continuity']+.4*(1-min(1,sig['subtitle_occupancy'])))
     motion=15*(1-min(1,abs(sig['motion']-12)/20))
@@ -113,7 +133,7 @@ def candidates(shots:list[dict[str,Any]])->list[dict[str,Any]]:
         if len(set(y for x in part for y in x['narrative_segment_ids'])) == 1: reasons.append('same_narrative_segment')
         if float(np.mean([x.get('subtitle_occupancy_ratio',0) for x in part])) >= .22: reasons.append('subtitle_continuity')
         event_hint='conversation' if 'subtitle_continuity' in reasons and len(part)>1 else 'interaction' if len(part)>1 else 'action'
-        c={'start_frame':int(part[0].get('start_frame', round(a*24))), 'end_frame_exclusive':int(part[-1].get('end_frame_exclusive',round(b*24))), 'start_seconds':_num(a),'end_seconds':_num(b),'duration_seconds':_num(b-a),'source_shot_ids':[x['shot_id'] for x in part],'narrative_segment_ids':list(dict.fromkeys(y for x in part for y in x['narrative_segment_ids'])),'event_type_hint':event_hint,'grouping_reason':reasons,'signals':{k:_num(v) for k,v in signals.items()}}
+        c={'start_frame':int(part[0].get('start_frame', round(a*24))), 'end_frame_exclusive':int(part[-1].get('end_frame_exclusive',round(b*24))), 'start_seconds':_num(a),'end_seconds':_num(b),'duration_seconds':_num(b-a),'source_shot_ids':[x['shot_id'] for x in part],'narrative_segment_ids':list(dict.fromkeys(y for x in part for y in x['narrative_segment_ids'])),'event_type_hint':event_hint,'grouping_reason':reasons,'structural_scoring_version':STRUCTURAL_SCORING_VERSION,'signals':{k:_num(v) for k,v in signals.items()}}
         c['score']=score_candidate(c); structural='KEEP' if c['score']['total']>=KEEP else 'REVIEW' if c['score']['total']>=REVIEW else 'REJECT'; c['structural_decision']=structural; c['editorial']={'decision':structural, 'status':'PROVISIONAL'}; result.append(c)
     return dedupe(result)
 
@@ -268,10 +288,16 @@ def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative
                 failed+=1
                 c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':str(error)}; continue
         c['visual']=response['visual']; c['people']=response['visual']['people']; c['relationships']=response['relationships']; c['editorial']={**response['editorial'],'status':'VALIDATED'}
-    complete=sum(c.get('editorial',{}).get('status')=='VALIDATED' for c in items); pending=len(items)-complete
-    status='PARTIAL_QUOTA' if quota else ('PARTIAL_PROVIDER' if pending else 'COMPLETE')
-    ledger.summary(status=status, visual_events_total=len(items), semantic_complete=complete, semantic_pending=pending, semantic_failed=failed, semantic_reused=reused, last_completed_event=next((c['visual_event_id'] for c in reversed(items) if c.get('editorial',{}).get('status')=='VALIDATED'),None), remaining_count=pending)
-    return {'provider':active.identifier if active else 'unavailable','model':model,'requests':requests,'reused':reused,'usage':usage,'status':status,'complete':complete,'pending':pending,'quota_exhausted':quota}
+    stages=[x['stages']['semantic'].get('status') for x in ledger.data['events'].values()]
+    complete=stages.count('COMPLETE'); retryable=stages.count('FAILED_RETRYABLE'); final=stages.count('FAILED_FINAL')
+    pending=stages.count('PENDING')+stages.count('RUNNING'); remaining=len(stages)-complete
+    status='PARTIAL_QUOTA' if quota else ('PARTIAL_PROVIDER' if remaining else 'COMPLETE')
+    ledger.summary(status=status, visual_events_total=len(items), semantic_complete=complete,
+                   semantic_pending=pending, semantic_failed=retryable+final,
+                   semantic_failed_retryable=retryable, semantic_failed_final=final,
+                   semantic_reused=reused, last_completed_event=next((c['visual_event_id'] for c in reversed(items) if c.get('editorial',{}).get('status')=='VALIDATED'),None),
+                   remaining_count=remaining, remaining_work_definition='PENDING + RUNNING + FAILED_RETRYABLE + FAILED_FINAL')
+    return {'provider':active.identifier if active else 'unavailable','model':model,'requests':requests,'reused':reused,'usage':usage,'status':status,'complete':complete,'pending':remaining,'semantic_pending':pending,'semantic_failed_retryable':retryable,'semantic_failed_final':final,'quota_exhausted':quota}
 
 def _words(value:Any)->set[str]:
     import re
