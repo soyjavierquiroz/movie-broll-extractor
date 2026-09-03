@@ -6,7 +6,8 @@ from typing import Any
 import cv2
 import numpy as np
 from .srt import parse_srt_file
-from .utils import write_json
+from .utils import write_json, sha256_file
+from .processing_ledger import ProcessingLedger, fingerprint
 from .broll_semantics import GeminiBrollSemanticProvider, PROMPT as SEMANTIC_PROMPT, SemanticProvider, validate_response
 
 PILOT_WINDOW="SW_02"; SAMPLE_FPS=3.0; KEEP=70; REVIEW=50
@@ -70,14 +71,27 @@ def add_context(shots:list[dict[str,Any]], srt:Path, narrative:Path)->None:
 
 def _similarity(a:dict,b:dict)->float: return max(0.,min(1.,float(cv2.compareHist(a['_hist'],b['_hist'],cv2.HISTCMP_CORREL)+1)/2))
 def generate_groups(shots:list[dict[str,Any]])->list[list[int]]:
+    """Group cuts into conservative editorial visual events, never just clips."""
     groups=[]; i=0
     while i<len(shots):
         duration=float(shots[i]['duration_seconds']); group=[i]
-        # Keep useful standalones; greedily join only short shots with direct successor.
-        while duration<4 and i+1<len(shots) and duration+float(shots[i+1]['duration_seconds'])<=12:
-            if _similarity(shots[i],shots[i+1])<.12: break
+        # A cut is not a boundary.  Continue across similar shots, particularly
+        # dialogue coverage, up to the conservative exceptional-event ceiling.
+        while i+1<len(shots) and duration+float(shots[i+1]['duration_seconds'])<=18:
+            current,nxt=shots[i],shots[i+1]
+            same_narrative=bool(set(current.get('narrative_segment_ids',[])) & set(nxt.get('narrative_segment_ids',[])))
+            conversational=(float(current.get('subtitle_occupancy_ratio',0))+float(nxt.get('subtitle_occupancy_ratio',0))) >= .45
+            similar=_similarity(current,nxt)>=.12
+            # Low similarity plus a context break is a setting/scene boundary.
+            if not similar and not same_narrative: break
+            # Preserve a useful ordinary standalone unless there is evidence that
+            # the next shot is part of a dialogue/interacting beat.
+            if duration>=5 and not conversational and len(group)==1: break
             i+=1; group.append(i); duration+=float(shots[i]['duration_seconds'])
-        if 3<=duration<=15: groups.append(group)
+            if duration>=15 and not conversational: break
+        # Without evidence of a completed sub-action, do not fabricate a 40–60s
+        # event from a long technical take. A later event splitter can add one.
+        if 3<=duration<=18: groups.append(group)
         i+=1
     return groups
 
@@ -94,7 +108,12 @@ def candidates(shots:list[dict[str,Any]])->list[dict[str,Any]]:
     result=[]
     for group in generate_groups(shots):
         part=[shots[i] for i in group]; a,b=float(part[0]['start_seconds']),float(part[-1]['end_seconds']); signals={'brightness':float(np.mean([x['brightness_mean'] for x in part])),'sharpness':float(np.mean([x['sharpness_score'] for x in part])),'motion':float(np.mean([x['motion_score'] for x in part])),'near_black_fraction':float(np.mean([x['near_black_fraction'] for x in part])),'subtitle_occupancy':float(np.mean([x['subtitle_occupancy_ratio'] for x in part])),'visual_continuity':float(np.mean([_similarity(x,y) for x,y in zip(part,part[1:])])) if len(part)>1 else 1.}
-        c={'start_frame':int(part[0].get('start_frame', round(a*24))), 'end_frame_exclusive':int(part[-1].get('end_frame_exclusive',round(b*24))), 'start_seconds':_num(a),'end_seconds':_num(b),'duration_seconds':_num(b-a),'source_shot_ids':[x['shot_id'] for x in part],'narrative_segment_ids':list(dict.fromkeys(y for x in part for y in x['narrative_segment_ids'])),'signals':{k:_num(v) for k,v in signals.items()}}
+        reasons=['technical_shot_continuity']
+        if len(part)>1: reasons.append('camera_cut_not_treated_as_asset_boundary')
+        if len(set(y for x in part for y in x['narrative_segment_ids'])) == 1: reasons.append('same_narrative_segment')
+        if float(np.mean([x.get('subtitle_occupancy_ratio',0) for x in part])) >= .22: reasons.append('subtitle_continuity')
+        event_hint='conversation' if 'subtitle_continuity' in reasons and len(part)>1 else 'interaction' if len(part)>1 else 'action'
+        c={'start_frame':int(part[0].get('start_frame', round(a*24))), 'end_frame_exclusive':int(part[-1].get('end_frame_exclusive',round(b*24))), 'start_seconds':_num(a),'end_seconds':_num(b),'duration_seconds':_num(b-a),'source_shot_ids':[x['shot_id'] for x in part],'narrative_segment_ids':list(dict.fromkeys(y for x in part for y in x['narrative_segment_ids'])),'event_type_hint':event_hint,'grouping_reason':reasons,'signals':{k:_num(v) for k,v in signals.items()}}
         c['score']=score_candidate(c); structural='KEEP' if c['score']['total']>=KEEP else 'REVIEW' if c['score']['total']>=REVIEW else 'REJECT'; c['structural_decision']=structural; c['editorial']={'decision':structural, 'status':'PROVISIONAL'}; result.append(c)
     return dedupe(result)
 
@@ -107,6 +126,7 @@ def dedupe(items:list[dict[str,Any]])->list[dict[str,Any]]:
     result=sorted(items,key=lambda x:(x['start_seconds'],x['end_seconds']))
     for i,x in enumerate(result,1):
         x['candidate_id']=f'BRC_{i:04d}'
+        x['visual_event_id']=f'VE_{i:06d}'
         x.setdefault('semantic_redundancy',{'status':'NOT_EVALUATED'})
     return result
 
@@ -120,10 +140,11 @@ def ffmpeg_export_command(movie:Path,c:dict[str,Any],output:Path, fps:float=24.0
     start=int(c['start_frame']) if 'start_frame' in c else round(float(c['start_seconds'])*fps)
     end=int(c.get('end_frame_exclusive',start+round(float(c.get('duration_seconds', 0))*fps)))
     if end <= start: raise ValueError('end_frame_exclusive must be greater than start_frame')
-    coarse_frame=max(0,start-max(1,round(fps)))
-    relative_start=start-coarse_frame; count=end-start
-    vf=f"trim=start_frame={relative_start}:end_frame={relative_start + count},setpts=PTS-STARTPTS"
-    return ['ffmpeg','-y','-ss',f'{coarse_frame/fps:.9f}','-i',str(movie),'-map','0:v:0','-vf',vf,'-vsync','0','-frames:v',str(count),'-c:v','libx264','-crf','19','-preset','medium','-an',str(output)]
+    count=end-start
+    # Decode from the source origin.  Input seeking is deliberately not used as
+    # frame authority: variable PTS/keyframe seeking can otherwise yield N-1.
+    vf=f"trim=start_frame={start}:end_frame={end},setpts=PTS-STARTPTS"
+    return ['ffmpeg','-y','-ss','0','-i',str(movie),'-map','0:v:0','-vf',vf,'-vsync','0','-frames:v',str(count),'-c:v','libx264','-crf','19','-preset','medium','-an',str(output)]
 def probe(path:Path, width:int,height:int, expected:float, expected_frame_count:int|None=None)->dict[str,Any]:
     raw=subprocess.check_output(['ffprobe','-v','error','-count_frames','-show_entries','stream=codec_type,codec_name,width,height,nb_read_frames:format=duration','-of','json',str(path)],text=True); data=json.loads(raw); streams=data.get('streams',[]); video=[x for x in streams if x['codec_type']=='video']; audio=[x for x in streams if x['codec_type']=='audio']; duration=float(data.get('format',{}).get('duration',0)); actual=int(video[0]['nb_read_frames']) if video and str(video[0].get('nb_read_frames','')).isdigit() else None
     count_ok=expected_frame_count is None or actual==expected_frame_count
@@ -200,25 +221,57 @@ def _semantic_checkpoint(path:Path, candidate:dict[str,Any], model:str, window_i
         return item['response'] if all(item.get(k)==v for k,v in expected.items()) and not validate_response(item['response']) else None
     except (OSError,KeyError,TypeError,json.JSONDecodeError): return None
 
+def _quota_error(error: Exception) -> bool:
+    text=str(error).lower()
+    return ('429' in text or 'resource_exhausted' in text) and any(x in text for x in ('quota','exhaust','free tier','daily'))
+
+def _retryable_error(error: Exception) -> bool:
+    text=str(error).lower()
+    return any(x in text for x in ('429','timeout','temporar','connection','unavailable','503','500'))
+
 def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative:Path, checkpoint_dir:Path, fps:float, window_id:str, provider:SemanticProvider|None=None, model:str='gemini-3.6-flash')->dict[str,Any]:
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parents[2]/'.env'); key=os.getenv('GEMINI_API_KEY')
-    active=provider or (GeminiBrollSemanticProvider(key,model) if key else None); cues=parse_srt_file(srt).cues; segments=json.loads(narrative.read_text()).get('segments',[]); checkpoint_dir.mkdir(parents=True,exist_ok=True); usage={'prompt_tokens':0,'response_tokens':0,'thinking_tokens':0,'cached_tokens':0,'total_tokens':0}; reused=requests=0
-    for c in items: # every compact technical candidate is eligible, irrespective of structural rank.
-        c['narrative']=_narrative_context(segments,c['start_seconds'],c['end_seconds']); c['srt_context']=_cue_context(cues,c['start_seconds'],c['end_seconds']); cp=checkpoint_dir/f"{c['candidate_id']}.json"; response=_semantic_checkpoint(cp,c,model,window_id)
-        if response is not None: reused+=1
-        elif active is None: c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':'GEMINI_API_KEY is not configured'}; continue
+    active=provider or (GeminiBrollSemanticProvider(key,model) if key else None); cues=parse_srt_file(srt).cues; segments=json.loads(narrative.read_text()).get('segments',[]); checkpoint_dir.mkdir(parents=True,exist_ok=True); usage={'prompt_tokens':0,'response_tokens':0,'thinking_tokens':0,'cached_tokens':0,'total_tokens':0}; reused=requests=0; quota=False; failed=0
+    movie_id=movie.parent.name
+    # Pilot checkpoints live under runs/<movie>/broll-pilot-v1/<window>; unit
+    # callers may pass an isolated directory, for which its parent is the run.
+    lineage=(checkpoint_dir, *checkpoint_dir.parents)
+    movie_run=next((x.parent for x in lineage if x.name == 'broll-pilot-v1'), checkpoint_dir.parent)
+    ledger=ProcessingLedger(movie_run,movie_id,{'movie_sha256':sha256_file(movie),'srt_sha256':sha256_file(srt),'narrative_sha256':sha256_file(narrative),'semantic_schema_version':SEMANTIC_SCHEMA_VERSION,'semantic_prompt_version':SEMANTIC_PROMPT_VERSION,'provider':active.identifier if active else 'unavailable','model':model})
+    for ordinal,c in enumerate(items,1): # every visual event is eligible, irrespective of structural rank.
+        c.setdefault('visual_event_id',f'VE_{ordinal:06d}')
+        c['narrative']=_narrative_context(segments,c['start_seconds'],c['end_seconds']); c['srt_context']=_cue_context(cues,c['start_seconds'],c['end_seconds']); cp=checkpoint_dir/f"{c['candidate_id']}.json"
+        # A checkpoint's identity plus the event/config fingerprint is the reuse key.
+        event_fp=fingerprint({'range':[c['start_frame'],c['end_frame_exclusive']],'shots':c['source_shot_ids'],'event_type_hint':c.get('event_type_hint'),'inputs':ledger.data['inputs'],'window_id':window_id})
+        record=ledger.register(c,event_fp); response=_semantic_checkpoint(cp,c,model,window_id)
+        if record['stages']['semantic'].get('status') == 'COMPLETE' and response is not None: reused+=1
+        elif response is not None:
+            ledger.stage(c['visual_event_id'],'semantic','COMPLETE',checkpoint=str(cp),model=model,candidate_fingerprint=event_fp); reused+=1
+        elif quota:
+            c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':'quota exhausted; safe to resume'}; continue
+        elif active is None:
+            ledger.stage(c['visual_event_id'],'semantic','FAILED_RETRYABLE',error='GEMINI_API_KEY is not configured')
+            c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':'GEMINI_API_KEY is not configured'}; continue
         else:
             try:
+                ledger.stage(c['visual_event_id'],'semantic','RUNNING',model=model,candidate_fingerprint=event_fp)
                 sheet=candidate_contact_sheet(movie,c,fps); response_obj=active.generate(SEMANTIC_PROMPT,{'window_id':window_id,'candidate_id':c['candidate_id'],'candidate_identity':{'window_id':window_id,'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive']},'narrative':c['narrative'],'srt_context':c['srt_context'],'instruction':'Images are visual authority; context is separate narrative evidence.'},sheet); errors=validate_response(response_obj.data)
                 if errors: raise ValueError('; '.join(errors))
-                response=response_obj.data; identity={'window_id':window_id,'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive']}; write_json(cp,{**identity,'candidate_identity':identity,'model':model,'semantic_schema_version':SEMANTIC_SCHEMA_VERSION,'semantic_prompt_version':SEMANTIC_PROMPT_VERSION,'response':response,'usage':response_obj.usage}); requests+=1
+                response=response_obj.data; identity={'window_id':window_id,'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive']}; write_json(cp,{**identity,'candidate_identity':identity,'visual_event_id':c['visual_event_id'],'candidate_fingerprint':event_fp,'model':model,'semantic_schema_version':SEMANTIC_SCHEMA_VERSION,'semantic_prompt_version':SEMANTIC_PROMPT_VERSION,'response':response,'usage':response_obj.usage}); ledger.stage(c['visual_event_id'],'semantic','COMPLETE',checkpoint=str(cp),model=model,candidate_fingerprint=event_fp); requests+=1
                 for name,value in response_obj.usage.items():
                     if value is not None: usage[name]+=value
             except Exception as error:
+                status='FAILED_RETRYABLE' if _retryable_error(error) else 'FAILED_FINAL'
+                ledger.stage(c['visual_event_id'],'semantic',status,error=str(error),candidate_fingerprint=event_fp)
+                if _quota_error(error): quota=True
+                failed+=1
                 c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':str(error)}; continue
         c['visual']=response['visual']; c['people']=response['visual']['people']; c['relationships']=response['relationships']; c['editorial']={**response['editorial'],'status':'VALIDATED'}
-    return {'provider':active.identifier if active else 'unavailable','model':model,'requests':requests,'reused':reused,'usage':usage}
+    complete=sum(c.get('editorial',{}).get('status')=='VALIDATED' for c in items); pending=len(items)-complete
+    status='PARTIAL_QUOTA' if quota else ('PARTIAL_PROVIDER' if pending else 'COMPLETE')
+    ledger.summary(status=status, visual_events_total=len(items), semantic_complete=complete, semantic_pending=pending, semantic_failed=failed, semantic_reused=reused, last_completed_event=next((c['visual_event_id'] for c in reversed(items) if c.get('editorial',{}).get('status')=='VALIDATED'),None), remaining_count=pending)
+    return {'provider':active.identifier if active else 'unavailable','model':model,'requests':requests,'reused':reused,'usage':usage,'status':status,'complete':complete,'pending':pending,'quota_exhausted':quota}
 
 def _words(value:Any)->set[str]:
     import re
@@ -250,22 +303,27 @@ def run_broll_pilot(input_dir:Path, provider:SemanticProvider|None=None, model:s
     paths=discover(input_dir,window_id); shots=load_shots(paths); signals=visual_signals(Path(paths['movie']),shots)
     for shot,signal in zip(shots,signals): shot.update(signal)
     add_context(shots,Path(paths['srt']),Path(paths['narrative'])); items=candidates(shots)
-    for item in items: item['window_id']=window_id
+    for ordinal,item in enumerate(items,1):
+        item['window_id']=window_id
+        item.setdefault('visual_event_id',f'VE_{ordinal:06d}')
     output=Path(paths['root'])/'runs'/input_dir.name/'broll-pilot-v1'/window_id; exports=output/'exports'; exports.mkdir(parents=True,exist_ok=True)
-    # This run owns only these pilot outputs; remove stale files before regeneration.
-    for path in [*exports.glob('BRC_*.mp4'),output/'review_reel.mp4',output/'review_contact_sheet.jpg',output/'candidates.json',output/'export_validation.json']:
-        if path.is_file(): path.unlink()
+    # Never delete durable outputs on resume. Stable event IDs/checkpoints make a
+    # rerun idempotent; regenerated manifests describe the current state.
     source= cv2.VideoCapture(str(paths['movie'])); width,height=int(source.get(cv2.CAP_PROP_FRAME_WIDTH)),int(source.get(cv2.CAP_PROP_FRAME_HEIGHT)); source.release()
     # The source fps makes the frame boundaries canonical; semantic analysis is
     # intentionally before selecting final exports and covers all candidates.
     fps=float(cv2.VideoCapture(str(paths['movie'])).get(cv2.CAP_PROP_FPS)) or 24.0
+    # Event identities exist before any provider work, so an interruption never
+    # requires rediscovering a semantic worklist.
+    write_json(output/'visual_events_manifest.json',{'schema_version':'visual_events_manifest_v1','window_id':window_id,'frame_semantics':'start_frame inclusive; end_frame_exclusive exclusive','events':items})
     semantic=semantic_validate(items,Path(paths['movie']),Path(paths['srt']),Path(paths['narrative']),output/'semantic_checkpoints',fps,window_id,provider,model)
     apply_semantic_scarcity(items)
     exported=[]; validations=[]
     for c in items:
         if c['editorial']['decision']=='KEEP':
             p=exports/f"{c['candidate_id']}.mp4"; expected_count=c['end_frame_exclusive']-c['start_frame']
-            subprocess.run(ffmpeg_export_command(Path(paths['movie']),c,p,fps),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            if not p.exists():
+                subprocess.run(ffmpeg_export_command(Path(paths['movie']),c,p,fps),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             container=probe(p,width,height,expected_count/fps,expected_count)
             validation={**container,**boundary_validation(Path(paths['movie']),p,c),'container_validation':container['status']}
             validation['production_validation']='PASS' if validation['container_validation']=='PASS' and validation['boundary_validation']=='PASS' else 'FAIL'
@@ -280,7 +338,16 @@ def run_broll_pilot(input_dir:Path, provider:SemanticProvider|None=None, model:s
     reel=output/'review_reel.mp4'
     if exported: subprocess.run(review_reel_command(exported,reel),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); validations.append(probe(reel,width,height,sum(c['duration_seconds'] for c in items if c['editorial']['decision']=='KEEP')))
     if exported: contact_sheet(Path(paths['movie']),[c for c in items if c['editorial']['decision']=='KEEP'],output/'review_contact_sheet.jpg')
-    write_json(output/'candidates.json',{'schema_version':'broll_pilot_candidates_v3','semantic_schema_version':SEMANTIC_SCHEMA_VERSION,'semantic_prompt_version':SEMANTIC_PROMPT_VERSION,'window_id':window_id,'frame_semantics':'start_frame inclusive; end_frame_exclusive exclusive','semantic_run':semantic,'candidates':items})
+    # The semantic ledger is authoritative for stage resumption; export/validation
+    # results are mirrored there without storing large payloads.
+    ledger=ProcessingLedger(Path(paths['root'])/'runs'/input_dir.name,input_dir.name,{})
+    for c in items:
+        event=ledger.data['events'].get(c['visual_event_id'])
+        if event and c['editorial']['decision']=='KEEP':
+            ledger.stage(c['visual_event_id'],'export','COMPLETE' if (exports/f"{c['candidate_id']}.mp4").exists() else 'PENDING',path=str(exports/f"{c['candidate_id']}.mp4"))
+            result=next((v for v in validations if v.get('candidate_id')==c['candidate_id']),None)
+            ledger.stage(c['visual_event_id'],'validation','COMPLETE' if result and result.get('production_validation')=='PASS' else 'FAILED_RETRYABLE',validation=result.get('production_validation') if result else 'not_run')
+    write_json(output/'candidates.json',{'schema_version':'broll_pilot_candidates_v4','semantic_schema_version':SEMANTIC_SCHEMA_VERSION,'semantic_prompt_version':SEMANTIC_PROMPT_VERSION,'window_id':window_id,'frame_semantics':'start_frame inclusive; end_frame_exclusive exclusive','semantic_run':semantic,'candidates':items})
     write_json(output/'export_validation.json',{'schema_version':'broll_pilot_export_validation_v3','frame_semantics':'start_frame inclusive; end_frame_exclusive exclusive','exports':validations})
     keep_items=[x for x in items if x['editorial']['decision']=='KEEP']
-    return {'window':window_id,'shots':len(shots),'candidates':len(items),'KEEP':len(keep_items),'REVIEW':sum(x['editorial']['decision']=='REVIEW' for x in items),'REJECT':sum(x['editorial']['decision']=='REJECT' for x in items),'exported':len(exported),'average_keep_duration':round(sum(x['duration_seconds'] for x in keep_items)/len(keep_items),2) if keep_items else 0.0,'output':output}
+    return {'window':window_id,'shots':len(shots),'candidates':len(items),'visual_events':len(items),'KEEP':len(keep_items),'REVIEW':sum(x['editorial']['decision']=='REVIEW' for x in items),'REJECT':sum(x['editorial']['decision']=='REJECT' for x in items),'exported':len(exported),'average_keep_duration':round(sum(x['duration_seconds'] for x in keep_items)/len(keep_items),2) if keep_items else 0.0,'status':semantic.get('status','COMPLETE'),'semantic_complete':semantic.get('complete',len(items)),'semantic_pending':semantic.get('pending',0),'semantic_reused':semantic.get('reused',0),'output':output}

@@ -65,7 +65,7 @@ def test_cli_invalid_window_returns_nonzero_before_analysis(monkeypatch,tmp_path
 def test_grouping_and_consecutive_max(monkeypatch):
     fake_similarity(monkeypatch)
     xs=[shot(1,0,2),shot(2,2,5),shot(3,5,11),shot(4,11,27)]
-    assert generate_groups(xs)==[[0,1],[2]] # short pair, standalone, >15 rejected
+    assert generate_groups(xs)==[[0,1,2],[3]] # cuts do not force an event boundary
 
 def test_candidate_order_scores_and_decisions(monkeypatch):
     fake_similarity(monkeypatch); xs=[shot(1,0,6),shot(2,6,12)]
@@ -99,7 +99,7 @@ def test_frame_bounds_are_authoritative_and_no_blind_offset(tmp_path):
     cmd=ffmpeg_export_command(Path('movie.mp4'),{'start_frame':240,'end_frame_exclusive':360},tmp_path/'x.mp4',24)
     assert '-frames:v' in cmd and cmd[cmd.index('-frames:v')+1]=='120'
     assert '0.083' not in ' '.join(cmd) and cmd.count('-ss') == 1
-    assert 'trim=start_frame=24:end_frame=144' in cmd[cmd.index('-vf')+1]
+    assert 'trim=start_frame=240:end_frame=360' in cmd[cmd.index('-vf')+1]
 
 def test_semantic_contract_keeps_visual_and_narrative_separate():
     assert validate_response(_semantic()) == []
@@ -213,3 +213,26 @@ def test_frame_exact_export_on_synthetic_movie(tmp_path):
     validation=boundary_validation(source,out,candidate)
     assert validation['boundary_validation']=='PASS'
     assert validation['expected_frame_count']==validation['actual_frame_count']==10
+
+def test_quota_stops_later_events_and_resume_reuses_checkpoints(monkeypatch,tmp_path):
+    import movie_broll.broll_pilot as b
+    from movie_broll.broll_semantics import SemanticResponse
+    movie=tmp_path/'film.mp4'; srt=tmp_path/'subtitles.srt'; narrative=tmp_path/'map.json'
+    movie.write_bytes(b'movie'); srt.write_text(''); narrative.write_text('{"segments":[]}')
+    items=[{'candidate_id':f'BRC_{i:04d}','visual_event_id':f'VE_{i:06d}','start_frame':i*10,'end_frame_exclusive':i*10+10,'start_seconds':float(i),'end_seconds':float(i+1),'duration_seconds':1.,'source_shot_ids':[f'S{i}']} for i in range(1,6)]
+    monkeypatch.setattr(b,'candidate_contact_sheet',lambda *args:b'jpg')
+    class Provider:
+        identifier='fake'
+        def __init__(self, quota=False): self.calls=[]; self.quota=quota
+        def generate(self,*args):
+            self.calls.append(args[1]['candidate_id'])
+            if self.quota and len(self.calls)==3: raise RuntimeError('429 free tier request quota exceeded')
+            return SemanticResponse(_semantic(),{'prompt_tokens':1,'response_tokens':1,'thinking_tokens':0,'cached_tokens':0,'total_tokens':2})
+    first=Provider(True)
+    report=b.semantic_validate(items,movie,srt,narrative,tmp_path/'broll-pilot-v1'/'SW_01'/'semantic_checkpoints',24,'SW_01',first)
+    assert first.calls==['BRC_0001','BRC_0002','BRC_0003'] and report['status']=='PARTIAL_QUOTA'
+    assert report['complete']==2 and report['pending']==3
+    second=Provider()
+    report=b.semantic_validate(items,movie,srt,narrative,tmp_path/'broll-pilot-v1'/'SW_01'/'semantic_checkpoints',24,'SW_01',second)
+    assert second.calls==['BRC_0003','BRC_0004','BRC_0005']
+    assert report['reused']==2 and report['status']=='COMPLETE'

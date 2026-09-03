@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ def write_json(path: Path, data: dict[str, Any]) -> None:
     with temporary_path.open("w", encoding="utf-8") as handle:
         json.dump(data, handle, ensure_ascii=False, indent=2, sort_keys=True)
         handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
     temporary_path.replace(path)
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:

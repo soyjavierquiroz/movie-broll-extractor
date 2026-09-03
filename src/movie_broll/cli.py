@@ -77,10 +77,11 @@ def main(argv=None):
  if a.command == "pilot":
   try:
    from .broll_pilot import run_broll_pilot
-   report=run_broll_pilot(Path(a.input_dir),window_id=a.window); output=report['output']; print(f"[broll-pilot] window: {report['window']}"); print(f"[broll-pilot] shots: {report['shots']}"); print(f"[broll-pilot] candidates: {report['candidates']}")
+   report=run_broll_pilot(Path(a.input_dir),window_id=a.window); output=report['output']; print(f"[broll-pilot] window: {report['window']}"); print(f"[broll-pilot] shots: {report['shots']}"); print(f"[broll-pilot] visual events: {report.get('visual_events',report['candidates'])}"); print(f"[broll-pilot] candidates: {report['candidates']}")
    for key in ('KEEP','REVIEW','REJECT','exported'): print(f"[broll-pilot] {key}: {report[key]}")
    print(f"[broll-pilot] average KEEP duration: {report['average_keep_duration']:.1f}s")
-   print(f"[broll-pilot] review reel: {output/'review_reel.mp4'}"); print("[broll-pilot] status: COMPLETE"); return 0
+   print(f"[broll-pilot] semantic complete: {report.get('semantic_complete',0)}; reused: {report.get('semantic_reused',0)}; pending: {report.get('semantic_pending',0)}")
+   print(f"[broll-pilot] review reel: {output/'review_reel.mp4'}"); print(f"[broll-pilot] status: {report.get('status','COMPLETE')}"); return 0 if report.get('status','COMPLETE') == 'COMPLETE' else 1
   except (OSError,ValueError,FileNotFoundError,RuntimeError,subprocess.CalledProcessError) as error: print(f"error: {error}",file=sys.stderr); return 2
  movie,srt,run=Path(a.movie),Path(a.srt),Path(a.run_dir)
  for label,path in (("movie",movie),("SRT",srt)):
