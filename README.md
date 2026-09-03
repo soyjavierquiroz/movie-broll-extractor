@@ -59,8 +59,10 @@ Keep this project simple: good enough is enough, route of least resistance, mani
 
 Vertical reframing is per technical source shot. The semantic event request returns a
 bounded `shot_focus_plan`; it is not one provider request per shot. CPU geometry uses
-local face detection and, when installed, the standalone YOLO ONNX model at
-`cache/models/movie-broll/yolov5nu.onnx`. No model or cache is read from another
+local face detection and a project-owned YOLOv5n ONNX model at
+`cache/models/movie-broll/yolov5n.onnx`. The first preflight downloads official
+YOLOv5 v7.0 `yolov5n.pt` weights and exports ONNX locally; install the project
+`detector` extra (`torch`, `onnx`) for that one-time export. No model or cache is read from another
 application. Missing required person geometry is sent to `REVIEW_VERTICAL`, never
 silently passed. `REFRAME_ALGORITHM_VERSION` is stored in the vertical fingerprint,
 metadata, validation, and thumbnail-dependent package reuse path, so a reframe change

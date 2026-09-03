@@ -130,6 +130,41 @@ def test_detector_preflight_rejects_missing_or_incomplete_model(monkeypatch,tmp_
 def test_detector_preflight_loads_backend_and_reports_truth(monkeypatch,tmp_path):
     import movie_broll.finalization as f
     path=tmp_path/'yolo.onnx'; path.write_bytes(b'x'*2048); monkeypatch.setattr(f,'_model_path',lambda:path)
-    calls=[]; monkeypatch.setattr(f.cv2.dnn,'readNetFromONNX',lambda value:calls.append(value) or object())
+    calls=[]
+    class Net:
+        def setInput(self, value): pass
+        def forward(self): return np.ones((1,1,6),dtype=np.float32)
+    monkeypatch.setattr(f.cv2.dnn,'readNetFromONNX',lambda value:calls.append(value) or Net())
     value=person_detector_preflight(provision=False)
     assert calls == [str(path)] and value['loaded'] and not value['inference_executed'] and value['model_path']==str(path)
+
+def test_yolov5n_provisioning_uses_official_weights_then_atomic_export(monkeypatch,tmp_path):
+    import movie_broll.finalization as f
+    path=tmp_path/'yolov5n.onnx'; monkeypatch.setattr(f,'_model_path',lambda:path); calls=[]
+    class Source:
+        sent=False
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def read(self,n=-1):
+            if self.sent: return b''
+            self.sent=True; return b'w'*2048
+    monkeypatch.setattr(f.urllib.request,'urlopen',lambda url,timeout:calls.append(url) or Source())
+    def export(weights,target): target.write_bytes(b'x'*2048)
+    monkeypatch.setattr(f,'_export_yolov5n',export)
+    class Net:
+        def setInput(self,x): pass
+        def forward(self): return np.ones((1,1,6),dtype=np.float32)
+    monkeypatch.setattr(f.cv2.dnn,'readNetFromONNX',lambda _:Net())
+    value=f.person_detector_preflight()
+    assert calls == [f.PERSON_WEIGHTS_URL] and path.exists() and value['model_id']=='yolov5n'
+    assert '.onnx' not in f.PERSON_WEIGHTS_URL
+
+def test_yolov5_decoder_filters_person_class_and_nms(monkeypatch,tmp_path):
+    import movie_broll.finalization as f
+    path=tmp_path/'yolov5n.onnx'; path.write_bytes(b'x'*2048); monkeypatch.setattr(f,'_model_path',lambda:path)
+    class Net:
+        def setInput(self,x): pass
+        def forward(self): return np.array([[[320,320,100,100,.9,.9,0],[320,320,100,100,.9,.1,.9]]],dtype=np.float32)
+    monkeypatch.setattr(f.cv2.dnn,'readNetFromONNX',lambda _:Net())
+    boxes=f._yolo_people(np.zeros((640,640,3),dtype=np.uint8))
+    assert len(boxes)==1 and boxes[0]['detector']=='yolo_person'

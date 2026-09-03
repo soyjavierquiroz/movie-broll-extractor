@@ -1,6 +1,6 @@
 """Resumable final packages and local shot-level 3:4 reframing."""
 from __future__ import annotations
-import json, re, shutil, subprocess, unicodedata, urllib.request
+import json, re, shutil, subprocess, unicodedata, urllib.request, sys
 from pathlib import Path
 from typing import Any, Callable
 import cv2
@@ -13,8 +13,8 @@ MOVIE_CODES={"romper-el-circulo":"rc"}; SAFE_MARGIN=.08
 # This is deliberately persistent: it is part of every vertical-only reuse key.
 REFRAME_ALGORITHM_VERSION="3e.2-shot-focus-face-safe-v1"
 SHOT_FOCUS_SCHEMA_VERSION="shot_focus_plan_v1"
-LOCAL_DETECTOR_VERSION="yolov5nu-onnx-person+haar-face-v1"
-PERSON_MODEL_NAME="yolov5nu.onnx"; PERSON_MODEL_VERSION="ultralytics-yolov5nu-onnx-v8.3.0"; PERSON_MODEL_URL="https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov5nu.onnx"
+LOCAL_DETECTOR_VERSION="yolov5n-onnx-person+haar-face-v1"
+PERSON_MODEL_ID="yolov5n"; PERSON_MODEL_NAME="yolov5n.onnx"; PERSON_MODEL_VERSION="yolov5-v7.0"; PERSON_WEIGHTS_NAME="yolov5n.pt"; PERSON_WEIGHTS_URL="https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5n.pt"; YOLOV5_EXPORT_REPOSITORY="https://github.com/ultralytics/yolov5.git"
 VERTICAL_VALIDATION_VERSION="3e.2.2-interaction-scope-v1"
 FOCUS_SUBJECTS={"woman","man","multiple_people","action_region","environment","unclear"}
 INTERACTION_REQUIREMENTS={"none","sequence","simultaneous","unclear"}
@@ -38,22 +38,39 @@ def _bbox(value:dict[str,Any])->dict[str,float]:
 def _model_path()->Path:
     """Standalone optional model location; never borrows another application's cache."""
     return Path(__file__).resolve().parents[2]/'cache'/'models'/'movie-broll'/PERSON_MODEL_NAME
+def _weights_path()->Path: return _model_path().with_name(PERSON_WEIGHTS_NAME)
+def _export_yolov5n(weights:Path,target:Path)->None:
+    """Use the official, pinned YOLOv5 exporter; never guess an ONNX asset URL."""
+    source=target.parent/'.yolov5-export-source'; output=target.with_suffix('.export.tmp.onnx')
+    try:
+        subprocess.run(['git','clone','--depth','1','--branch','v7.0',YOLOV5_EXPORT_REPOSITORY,str(source)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        subprocess.run([sys.executable,str(source/'export.py'),'--weights',str(weights),'--include','onnx','--imgsz','640','640','--device','cpu'],check=True,cwd=source,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        produced=weights.with_suffix('.onnx')
+        if not produced.is_file(): raise RuntimeError('official YOLOv5 export did not produce ONNX')
+        shutil.move(str(produced),output); output.replace(target)
+    except (OSError,subprocess.CalledProcessError) as error:
+        output.unlink(missing_ok=True); raise RuntimeError('person detector preflight failed: YOLOv5n export requires project detector dependencies (torch and onnx) and official exporter access') from error
+    finally: shutil.rmtree(source,ignore_errors=True)
 def person_detector_preflight(provision:bool=True)->dict[str,Any]:
     """Provision and load the project-owned ONNX model before asset processing."""
     path=_model_path(); meta=path.with_suffix('.json')
     if not path.is_file() and provision:
-        path.parent.mkdir(parents=True,exist_ok=True); temp=path.with_suffix('.download.tmp')
+        path.parent.mkdir(parents=True,exist_ok=True); weights=_weights_path(); temp=weights.with_suffix('.download.tmp')
         try:
-            with urllib.request.urlopen(PERSON_MODEL_URL,timeout=60) as source, temp.open('wb') as target: shutil.copyfileobj(source,target)
-            temp.replace(path)
+            if not weights.is_file():
+                with urllib.request.urlopen(PERSON_WEIGHTS_URL,timeout=60) as source, temp.open('wb') as target: shutil.copyfileobj(source,target)
+                temp.replace(weights)
+            _export_yolov5n(weights,path)
         except (OSError,urllib.error.URLError) as error:
-            temp.unlink(missing_ok=True); raise RuntimeError(f'person detector preflight failed: cannot provision {PERSON_MODEL_NAME} at {path}: {error}') from error
+            temp.unlink(missing_ok=True); raise RuntimeError(f'person detector preflight failed: cannot provision official {PERSON_WEIGHTS_NAME} at {weights}: {error}') from error
     if not path.is_file() or path.stat().st_size < 1024: raise RuntimeError(f'person detector preflight failed: required model is missing or incomplete: {path}')
     digest=sha256_file(path)
-    try: cv2.dnn.readNetFromONNX(str(path))
+    try:
+        net=cv2.dnn.readNetFromONNX(str(path)); net.setInput(cv2.dnn.blobFromImage(np.zeros((64,64,3),dtype=np.uint8),1/255.,(640,640),swapRB=True)); output=net.forward()
+        if np.asarray(output).size < 6: raise RuntimeError('ONNX smoke inference returned no usable detections tensor')
     except cv2.error as error: raise RuntimeError(f'person detector preflight failed: OpenCV cannot load {path}: {error}') from error
-    write_json(meta,{'model_name':PERSON_MODEL_NAME,'model_version':PERSON_MODEL_VERSION,'model_url':PERSON_MODEL_URL,'sha256':digest})
-    global _PERSON_RUNTIME; _PERSON_RUNTIME={'configured_model':PERSON_MODEL_NAME,'model_version':PERSON_MODEL_VERSION,'model_path':str(path),'model_sha256':digest,'loaded':True,'inference_executed':False}
+    write_json(meta,{'model_id':PERSON_MODEL_ID,'model_format':'onnx','model_version':PERSON_MODEL_VERSION,'weights_source':PERSON_WEIGHTS_URL,'sha256':digest})
+    global _PERSON_RUNTIME; _PERSON_RUNTIME={'model_id':PERSON_MODEL_ID,'model_format':'onnx','model_version':PERSON_MODEL_VERSION,'model_path':str(path),'model_sha256':digest,'backend':'opencv_dnn_cpu','loaded':True,'smoke_inference_passed':True,'inference_executed':False}
     return dict(_PERSON_RUNTIME)
 def _yolo_people(frame:np.ndarray)->list[dict[str,Any]]:
     """Best-effort CPU YOLO ONNX inference when the documented local model exists."""
@@ -62,14 +79,16 @@ def _yolo_people(frame:np.ndarray)->list[dict[str,Any]]:
     try:
         net=cv2.dnn.readNetFromONNX(str(path)); blob=cv2.dnn.blobFromImage(frame,1/255.,(640,640),swapRB=True); net.setInput(blob); out=np.squeeze(net.forward())
         if _PERSON_RUNTIME is not None: _PERSON_RUNTIME['inference_executed']=True
-        if out.ndim==2 and out.shape[0] < out.shape[1]: out=out.T
-        sx,sy=frame.shape[1]/640.,frame.shape[0]/640.; result=[]
+        if out.ndim==3: out=out[0]
+        if out.ndim==2 and out.shape[1] < 6 and out.shape[0] >= 6: out=out.T
+        sx,sy=frame.shape[1]/640.,frame.shape[0]/640.; boxes=[]; scores=[]
         for row in out:
-            if len(row)<5: continue
-            score=float(row[4])
+            if len(row)<6: continue
+            score=float(row[4])*(float(row[5]) if len(row)>5 else 1.)
             if score<.35: continue
-            cx,cy,w,h=(float(v) for v in row[:4]); result.append({'bbox':{'x':max(0.,(cx-w/2)*sx),'y':max(0.,(cy-h/2)*sy),'width':w*sx,'height':h*sy},'face_visible':False,'confidence':score,'detector':'yolo_person'})
-        return result
+            cx,cy,w,h=(float(v) for v in row[:4]); boxes.append([int(max(0,(cx-w/2)*sx)),int(max(0,(cy-h/2)*sy)),int(w*sx),int(h*sy)]); scores.append(score)
+        keep=cv2.dnn.NMSBoxes(boxes,scores,.35,.45) if boxes else []
+        return [{'bbox':{'x':float(boxes[int(i)][0]),'y':float(boxes[int(i)][1]),'width':float(boxes[int(i)][2]),'height':float(boxes[int(i)][3])},'face_visible':False,'confidence':float(scores[int(i)]),'detector':'yolo_person'} for i in np.asarray(keep).reshape(-1)]
     except cv2.error as error: raise RuntimeError(f'person detector inference failed: {error}') from error
 def detect_people(frame:np.ndarray)->list[dict[str,Any]]:
     """Local face geometry plus optional standalone YOLO person geometry; never HOG-only."""
