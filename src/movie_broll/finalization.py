@@ -14,11 +14,13 @@ MOVIE_CODES={"romper-el-circulo":"rc"}; SAFE_MARGIN=.08
 REFRAME_ALGORITHM_VERSION="3e.2-shot-focus-face-safe-v1"
 SHOT_FOCUS_SCHEMA_VERSION="shot_focus_plan_v1"
 LOCAL_DETECTOR_VERSION="yolov5n-onnx-person+haar-face-v1"
+PERSON_CANDIDATE_CONFIDENCE=.05; PERSON_NMS_IOU=.45
 PERSON_MODEL_ID="yolov5n"; PERSON_MODEL_NAME="yolov5n.onnx"; PERSON_MODEL_VERSION="yolov5-v7.0"; PERSON_WEIGHTS_NAME="yolov5n.pt"; PERSON_WEIGHTS_URL="https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5n.pt"; YOLOV5_EXPORT_REPOSITORY="https://github.com/ultralytics/yolov5.git"
 VERTICAL_VALIDATION_VERSION="3e.2.2-interaction-scope-v1"
 FOCUS_SUBJECTS={"woman","man","multiple_people","action_region","environment","unclear"}
 INTERACTION_REQUIREMENTS={"none","sequence","simultaneous","unclear"}
 _PERSON_RUNTIME:dict[str,Any]|None=None
+_FACE_RUNTIME:dict[str,Any]={'available':hasattr(cv2,'CascadeClassifier'),'implementation':'opencv_haar_frontalface','inference_executed':False,'failure_reason':None if hasattr(cv2,'CascadeClassifier') else 'OpenCV Haar CascadeClassifier is unavailable'}
 def movie_code(run:Path,movie_id:str)->str:
     path=run/'movie_metadata.json'
     if path.exists(): return json.loads(path.read_text())['movie_code']
@@ -98,26 +100,39 @@ def _yolo_people(frame:np.ndarray)->list[dict[str,Any]]:
     path=_model_path()
     if not path.is_file(): raise RuntimeError(f'person detector unavailable: required model is missing: {path}')
     try:
-        net=cv2.dnn.readNetFromONNX(str(path)); blob=cv2.dnn.blobFromImage(frame,1/255.,(640,640),swapRB=True); net.setInput(blob); out=np.squeeze(net.forward())
+        letterboxed,transform=letterbox(frame); net=cv2.dnn.readNetFromONNX(str(path)); blob=cv2.dnn.blobFromImage(letterboxed,1/255.,(640,640),swapRB=True); net.setInput(blob); out=np.squeeze(net.forward())
         if _PERSON_RUNTIME is not None: _PERSON_RUNTIME['inference_executed']=True
         if out.ndim==3: out=out[0]
         if out.ndim==2 and out.shape[1] < 6 and out.shape[0] >= 6: out=out.T
-        sx,sy=frame.shape[1]/640.,frame.shape[0]/640.; boxes=[]; scores=[]
+        boxes=[]; scores=[]; records=[]
         for row in out:
-            if len(row)<6: continue
-            score=float(row[4])*(float(row[5]) if len(row)>5 else 1.)
-            if score<.35: continue
-            cx,cy,w,h=(float(v) for v in row[:4]); boxes.append([int(max(0,(cx-w/2)*sx)),int(max(0,(cy-h/2)*sy)),int(w*sx),int(h*sy)]); scores.append(score)
-        keep=cv2.dnn.NMSBoxes(boxes,scores,.35,.45) if boxes else []
-        return [{'bbox':{'x':float(boxes[int(i)][0]),'y':float(boxes[int(i)][1]),'width':float(boxes[int(i)][2]),'height':float(boxes[int(i)][3])},'face_visible':False,'confidence':float(scores[int(i)]),'detector':'yolo_person'} for i in np.asarray(keep).reshape(-1)]
+            if len(row)<85: continue
+            objectness=float(row[4]); probs=np.asarray(row[5:],dtype=float); best=int(np.argmax(probs)); class_probability=float(probs[best]); score=objectness*class_probability
+            if best != 0 or score<PERSON_CANDIDATE_CONFIDENCE: continue
+            cx,cy,w,h=(float(v) for v in row[:4]); box=unletterbox_bbox({'x':cx-w/2,'y':cy-h/2,'width':w,'height':h},transform)
+            if box['width']<=1 or box['height']<=1: continue
+            boxes.append([int(box['x']),int(box['y']),int(box['width']),int(box['height'])]); scores.append(score); records.append({'bbox':box,'face_visible':False,'confidence':score,'detector':'yolo_person','class_id':0,'class_name':'person','objectness':objectness,'class_probability':class_probability,'preprocessing':transform})
+        keep=cv2.dnn.NMSBoxes(boxes,scores,PERSON_CANDIDATE_CONFIDENCE,PERSON_NMS_IOU) if boxes else []
+        return [records[int(i)] for i in np.asarray(keep).reshape(-1)]
     except cv2.error as error: raise RuntimeError(f'person detector inference failed: {error}') from error
 def detect_people(frame:np.ndarray)->list[dict[str,Any]]:
     """Local face geometry plus optional standalone YOLO person geometry; never HOG-only."""
-    gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY); cascade=cv2.CascadeClassifier(cv2.data.haarcascades+'haarcascade_frontalface_default.xml'); faces=cascade.detectMultiScale(gray,1.1,4,minSize=(20,20)) if not cascade.empty() else []
     people=_yolo_people(frame)
+    faces=[]
+    try:
+        if not hasattr(cv2,'CascadeClassifier'): raise RuntimeError('OpenCV Haar CascadeClassifier is unavailable')
+        gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY); cascade=cv2.CascadeClassifier(cv2.data.haarcascades+'haarcascade_frontalface_default.xml'); faces=cascade.detectMultiScale(gray,1.1,4,minSize=(20,20)) if not cascade.empty() else []; _FACE_RUNTIME.update(available=not cascade.empty(),inference_executed=not cascade.empty(),failure_reason=None if not cascade.empty() else 'Haar cascade unavailable')
+    except (cv2.error,RuntimeError) as error: _FACE_RUNTIME.update(available=False,inference_executed=False,failure_reason=str(error))
     # Faces remain separate candidates so a focused interlocutor beats a large OTS body.
     people.extend({'bbox':{'x':float(x),'y':float(y),'width':float(w),'height':float(h)},'face_visible':True,'confidence':1.,'detector':'haar_face'} for x,y,w,h in faces)
     return people
+def letterbox(frame:np.ndarray,network:int=640)->tuple[np.ndarray,dict[str,float]]:
+    """YOLOv5 aspect-preserving 640-square input and reversible transform."""
+    height,width=frame.shape[:2]; gain=min(network/width,network/height); resized=(round(width*gain),round(height*gain)); pad_x=(network-resized[0])/2; pad_y=(network-resized[1])/2
+    image=cv2.resize(frame,resized,interpolation=cv2.INTER_LINEAR); result=cv2.copyMakeBorder(image,int(np.floor(pad_y)),int(np.ceil(pad_y)),int(np.floor(pad_x)),int(np.ceil(pad_x)),cv2.BORDER_CONSTANT,value=(114,114,114))
+    return result,{'input_width':float(width),'input_height':float(height),'network_width':float(network),'network_height':float(network),'gain':gain,'pad_x':pad_x,'pad_y':pad_y}
+def unletterbox_bbox(box:dict[str,float],transform:dict[str,float])->dict[str,float]:
+    gain=transform['gain']; x=max(0.,min(transform['input_width'],(box['x']-transform['pad_x'])/gain)); y=max(0.,min(transform['input_height'],(box['y']-transform['pad_y'])/gain)); right=max(x,min(transform['input_width'],(box['x']+box['width']-transform['pad_x'])/gain)); bottom=max(y,min(transform['input_height'],(box['y']+box['height']-transform['pad_y'])/gain)); return {'x':x,'y':y,'width':right-x,'height':bottom-y}
 def _directive(event:dict[str,Any],shot:dict[str,Any])->dict[str,Any]:
     visual=event.get('visual',{}); values=visual.get('shot_focus_plan',visual.get('shot_focus',event.get('shot_focus_plan',event.get('shot_focus',[])))) or []; direct=next((x for x in values if x.get('shot_id')==shot.get('shot_id')),{})
     subject=str(direct.get('focus_subject','unclear')).lower()
@@ -178,7 +193,7 @@ def build_shot_crop_plan(video:Path,event:dict[str,Any],shots:dict[str,dict[str,
         required_person=direct['focus_subject'] in {'woman','man','multiple_people'}
         unresolved=required_person and focus is None
         person_count=sum(1 for x in all_boxes if x.get('detector')=='yolo_person'); face_count=sum(1 for x in all_boxes if x.get('face_visible'))
-        provenance={'person_detector':dict(_PERSON_RUNTIME or {'configured_model':PERSON_MODEL_NAME,'loaded':False,'inference_executed':False}),'face_detector':{'implementation':'opencv_haar_frontalface','loaded':True,'inference_executed':True}}
+        provenance={'person_detector':dict(_PERSON_RUNTIME or {'model_id':PERSON_MODEL_ID,'loaded':False,'inference_executed':False}),'face_detector':dict(_FACE_RUNTIME)}
         plans.append({'shot_id':sid,'start_seconds':start,'end_seconds':end,'focus_subject':direct['focus_subject'],'focus_role':direct['focus_role'],'focus_reason':direct.get('focus_reason','semantic shot focus plus local geometry'),'directive_available':direct['directive_available'],'required_person_focus':required_person,'interaction_requirement':direct['interaction_requirement'],'preserve_interaction':preserve,'required_action_region':regions,'focus_bbox':focus,'subject_bboxes':all_boxes,'person_detection_count':person_count,'face_detection_count':face_count,'geometry_resolved':bool(focus),'anchors':anchors,'x':float(np.median([x['x'] for x in anchors])),'crop_width':crop,'source_width':width,'strategy':strategy,'review_required':impossible or unresolved or not direct['directive_available'],'action_preserved':not action or bool(required),'detector_version':LOCAL_DETECTOR_VERSION if detector is detect_people and provenance['person_detector']['loaded'] else 'injected_test_detector','detector_provenance':provenance})
     return plans
 def shot_crop_plan(event:dict[str,Any],shots:dict[str,dict[str,Any]],width:int,height:int)->list[dict[str,Any]]:

@@ -3,7 +3,7 @@ from pathlib import Path
 import tomllib
 import cv2
 import numpy as np
-from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, _directive, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, validate_vertical
+from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, _directive, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, letterbox, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, unletterbox_bbox, validate_vertical
 
 def event(position='left', people=None, interaction=None):
     return {'visual_event_id':'VE_000123','start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.,'source_shot_ids':['S1','S2'],
@@ -181,7 +181,8 @@ def test_yolov5_decoder_filters_person_class_and_nms(monkeypatch,tmp_path):
     path=tmp_path/'yolov5n.onnx'; path.write_bytes(b'x'*2048); monkeypatch.setattr(f,'_model_path',lambda:path)
     class Net:
         def setInput(self,x): pass
-        def forward(self): return np.array([[[320,320,100,100,.9,.9,0],[320,320,100,100,.9,.1,.9]]],dtype=np.float32)
+        def forward(self):
+            out=np.zeros((1,2,85),dtype=np.float32); out[0,0,:6]=[320,320,100,100,.9,.9]; out[0,1,:7]=[320,320,100,100,.9,.1,.9]; return out
     monkeypatch.setattr(f.cv2.dnn,'readNetFromONNX',lambda _:Net())
     boxes=f._yolo_people(np.zeros((640,640,3),dtype=np.uint8))
     assert len(boxes)==1 and boxes[0]['detector']=='yolo_person'
@@ -191,3 +192,9 @@ def test_detector_extra_declares_pinned_exporter_imports():
     extra=' '.join(data['project']['optional-dependencies']['detector']).lower()
     for name in ('torchvision','pillow','pyyaml','scipy','pandas','seaborn','ipython','onnxscript','setuptools'):
         assert name in extra
+
+def test_yolov5_letterbox_preserves_cinematic_aspect_and_reverses_coordinates():
+    image=np.zeros((720,1720,3),dtype=np.uint8); boxed,transform=letterbox(image)
+    assert boxed.shape == (640,640,3) and transform['gain'] == 640/1720 and transform['pad_y'] > 180 and transform['pad_x'] == 0
+    original=unletterbox_bbox({'x':100,'y':transform['pad_y']+50,'width':200,'height':100},transform)
+    assert 0 <= original['x'] < 1720 and 0 <= original['y'] < 720 and original['width'] > 500
