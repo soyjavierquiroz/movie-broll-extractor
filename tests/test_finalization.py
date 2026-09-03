@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import cv2
 import numpy as np
-from movie_broll.finalization import asset_identity, crop_x, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, validate_vertical
+from movie_broll.finalization import _remove_incomplete_assets, _shot_validation, asset_identity, build_shot_crop_plan, crop_x, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, validate_vertical
 
 def event(position='left', people=None, interaction=None):
     return {'visual_event_id':'VE_000123','start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.,'source_shot_ids':['S1','S2'],
@@ -41,3 +41,45 @@ def test_interaction_that_loses_opposite_subject_is_review(tmp_path):
 def test_safe_cleanup_is_owned_and_keeps_no_residue(tmp_path):
     work=tmp_path/'runs'/'film'/'.work'; work.mkdir(parents=True); (work/'old.tmp').write_bytes(b'x'); final=tmp_path/'runs'/'film'/'assets'/'rc001.mp4'; final.parent.mkdir(); final.write_bytes(b'final')
     assert safe_cleanup(work)==1 and not list(work.iterdir()) and final.read_bytes()==b'final'
+
+def _geometry_plan(tmp_path, directive, detections, ids=['S1']):
+    video=tmp_path/'h.mp4'; synthetic(video)
+    e=event(); e['source_shot_ids']=ids; e['visual']['shot_focus']=directive
+    shots={sid:{'shot_id':sid,'start_seconds':i*.5,'end_seconds':(i+1)*.5} for i,sid in enumerate(ids)}
+    calls=iter(detections if detections and isinstance(detections[0],list) else [detections]*20)
+    return build_shot_crop_plan(video,e,shots,160,120,detector=lambda _:next(calls,[]))
+
+def test_local_geometry_focuses_left_right_and_ots_visible_face(tmp_path):
+    left=_geometry_plan(tmp_path,[{'shot_id':'S1','focus_subject':'man','focus_role':'primary','focus_reason':'reaction','preserve_interaction':False,'position':'left'}],[{'bbox':{'x':10,'y':20,'width':28,'height':35},'face_visible':True}])
+    assert left[0]['x']==0 and _shot_validation(left[0])['focus_subject_safe']
+    right=_geometry_plan(tmp_path,[{'shot_id':'S1','focus_subject':'woman','focus_role':'primary','focus_reason':'reaction','preserve_interaction':False,'position':'right'}],[{'bbox':{'x':115,'y':20,'width':28,'height':35},'face_visible':True}])
+    assert right[0]['x']>=65 and _shot_validation(right[0])['focus_subject_safe']
+    ots=_geometry_plan(tmp_path,[{'shot_id':'S1','focus_subject':'woman','focus_role':'primary','focus_reason':'visible face','preserve_interaction':False}],[{'bbox':{'x':0,'y':0,'width':55,'height':100},'foreground':True,'face_visible':False},{'bbox':{'x':110,'y':15,'width':25,'height':30},'face_visible':True}])
+    assert ots[0]['focus_bbox']['x']==110
+
+def test_reverse_shot_and_interaction_decisions(tmp_path):
+    directives=[{'shot_id':'S1','focus_subject':'man','focus_role':'primary','focus_reason':'reaction','preserve_interaction':False,'position':'left'},{'shot_id':'S2','focus_subject':'woman','focus_role':'primary','focus_reason':'reaction','preserve_interaction':False,'position':'right'}]
+    plan=_geometry_plan(tmp_path,directives,[[{'bbox':{'x':10,'y':20,'width':25,'height':30},'face_visible':True}]]*5+[[{'bbox':{'x':120,'y':20,'width':25,'height':30},'face_visible':True}]]*5,['S1','S2'])
+    assert plan[0]['x'] < plan[1]['x'] and plan[0]['anchors'][-1]['time'] < plan[1]['start_seconds'] + .5
+    fit=_geometry_plan(tmp_path,[{'shot_id':'S1','focus_subject':'both','focus_role':'primary','focus_reason':'shared','preserve_interaction':True}],[{'bbox':{'x':35,'y':20,'width':20,'height':30},'face_visible':True},{'bbox':{'x':75,'y':20,'width':20,'height':30},'face_visible':True}])
+    assert not fit[0]['review_required']
+    focal=_geometry_plan(tmp_path,[{'shot_id':'S1','focus_subject':'man','focus_role':'primary','focus_reason':'reaction','preserve_interaction':False}],[{'bbox':{'x':0,'y':20,'width':25,'height':30},'face_visible':True},{'bbox':{'x':130,'y':20,'width':25,'height':30},'face_visible':True}])
+    assert not focal[0]['review_required']
+    required=_geometry_plan(tmp_path,[{'shot_id':'S1','focus_subject':'both','focus_role':'primary','focus_reason':'embrace','preserve_interaction':True}],[{'bbox':{'x':0,'y':20,'width':25,'height':30},'face_visible':True},{'bbox':{'x':130,'y':20,'width':25,'height':30},'face_visible':True}])
+    assert required[0]['review_required'] and _shot_validation(required[0])['status']=='FAIL'
+
+def test_track_stability_action_and_source_edge_exception(tmp_path):
+    stable=_geometry_plan(tmp_path,[{'shot_id':'S1','focus_subject':'man','focus_role':'primary','focus_reason':'close','preserve_interaction':False}],[[{'bbox':{'x':40+i%2,'y':20,'width':25,'height':30},'face_visible':True}] for i in range(5)])
+    assert len(stable[0]['anchors'])==1
+    moving=_geometry_plan(tmp_path,[{'shot_id':'S1','focus_subject':'man','focus_role':'primary','focus_reason':'walk','preserve_interaction':False}],[[{'bbox':{'x':10+i*20,'y':20,'width':25,'height':30},'face_visible':True}] for i in range(5)])
+    assert len(moving[0]['anchors'])>1 and _shot_validation(moving[0])['crop_stable']
+    action=_geometry_plan(tmp_path,[{'shot_id':'S1','focus_subject':'man','focus_role':'primary','focus_reason':'hands','preserve_interaction':False,'required_action_region':[{'x':72,'y':50,'width':10,'height':20}]}],[{'bbox':{'x':25,'y':20,'width':25,'height':30},'face_visible':True}])
+    assert _shot_validation(action[0])['action_preserved']
+    clipped=stable[0] | {'focus_bbox':{'x':0,'y':20,'width':20,'height':30},'x':20}
+    assert _shot_validation(clipped)['source_edge_exception'] and not _shot_validation(clipped)['introduced_subject_clipping']
+
+def test_incomplete_asset_is_not_left_in_asset_hub(tmp_path):
+    assets=tmp_path/'assets'; assets.mkdir(); (assets/'rc001-x.mp4').write_bytes(b'x'); (assets/'rc002-y.mp4').write_bytes(b'x')
+    for name in ('vrc002-y.mp4','rc002-y.jpg','vrc002-y.jpg','rc002-y.json'): (assets/name).write_bytes(b'x')
+    _remove_incomplete_assets(assets)
+    assert not (assets/'rc001-x.mp4').exists() and len(list(assets.iterdir()))==5
