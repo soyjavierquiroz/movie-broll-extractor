@@ -28,7 +28,12 @@ class ProcessingLedger:
         self.data = self._load(inputs)
         # A process which died while a request was outstanding must be safe to rerun.
         for event in self.data["events"].values():
-            for stage in event.get("stages", {}).values():
+            for name,stage in event.get("stages", {}).items():
+                # A short-lived 3E.2 bug persisted an editorial disposition as a
+                # generic lifecycle status. Preserve all completed work while
+                # repairing only the vertical/finalization contexts it created.
+                if name in {"vertical_validation", "finalization"} and stage.get("status") == "REVIEW_VERTICAL":
+                    stage.update(status="COMPLETE", decision="REVIEW_VERTICAL", migrated_from_status="REVIEW_VERTICAL", updated_at=utc())
                 if stage.get("status") == "RUNNING":
                     stage.update(status="FAILED_RETRYABLE", error="interrupted before durable completion", updated_at=utc())
         self.save()

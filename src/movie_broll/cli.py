@@ -86,8 +86,8 @@ def main(argv=None):
     report=finalize_pilot(Path(a.input_dir),a.window)
     print(f"[pilot-finalize] assets: {report['completed']}; review: {report['review']}; reused: {report['reused']}")
     print(f"[pilot-finalize] directory: {report['assets']}")
-    print("[pilot-finalize] status: COMPLETE")
-    return 0
+    print(f"[pilot-finalize] status: {report['status']}")
+    return 0 if report['status'] == 'COMPLETE' else 1
    if a.pilot_command == "select-next":
     from .pilot_selector import select_next as choose_pilot_window
     window=choose_pilot_window(Path(a.input_dir))
