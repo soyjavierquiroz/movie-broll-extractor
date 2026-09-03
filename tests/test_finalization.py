@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import tomllib
 import cv2
 import numpy as np
 from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, _directive, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, validate_vertical
@@ -140,7 +141,7 @@ def test_detector_preflight_loads_backend_and_reports_truth(monkeypatch,tmp_path
 
 def test_yolov5n_provisioning_uses_official_weights_then_atomic_export(monkeypatch,tmp_path):
     import movie_broll.finalization as f
-    path=tmp_path/'yolov5n.onnx'; monkeypatch.setattr(f,'_model_path',lambda:path); calls=[]
+    path=tmp_path/'yolov5n.onnx'; monkeypatch.setattr(f,'_model_path',lambda:path); monkeypatch.setattr(f,'_missing_detector_dependencies',lambda:[]); calls=[]
     class Source:
         sent=False
         def __enter__(self): return self
@@ -159,6 +160,22 @@ def test_yolov5n_provisioning_uses_official_weights_then_atomic_export(monkeypat
     assert calls == [f.PERSON_WEIGHTS_URL] and path.exists() and value['model_id']=='yolov5n'
     assert '.onnx' not in f.PERSON_WEIGHTS_URL
 
+def test_preflight_names_exact_missing_export_dependencies(monkeypatch,tmp_path):
+    import movie_broll.finalization as f
+    monkeypatch.setattr(f,'_model_path',lambda:tmp_path/'yolov5n.onnx'); monkeypatch.setattr(f,'_missing_detector_dependencies',lambda:['torchvision','Pillow','PyYAML'])
+    import pytest
+    with pytest.raises(RuntimeError,match='torchvision, Pillow, PyYAML'): f.person_detector_preflight()
+
+def test_export_failure_keeps_useful_stderr_and_cleans_source(monkeypatch,tmp_path):
+    import movie_broll.finalization as f
+    weights=tmp_path/'yolov5n.pt'; weights.write_bytes(b'x'); target=tmp_path/'yolov5n.onnx'
+    class Result:
+        returncode=1; stdout=''; stderr="Traceback\nModuleNotFoundError: No module named 'torchvision'"
+    monkeypatch.setattr(f.subprocess,'run',lambda *a,**k:Result())
+    import pytest
+    with pytest.raises(RuntimeError,match="ModuleNotFoundError: No module named 'torchvision'"): f._export_yolov5n(weights,target)
+    assert not (tmp_path/'.yolov5-export-source').exists() and not target.exists()
+
 def test_yolov5_decoder_filters_person_class_and_nms(monkeypatch,tmp_path):
     import movie_broll.finalization as f
     path=tmp_path/'yolov5n.onnx'; path.write_bytes(b'x'*2048); monkeypatch.setattr(f,'_model_path',lambda:path)
@@ -168,3 +185,9 @@ def test_yolov5_decoder_filters_person_class_and_nms(monkeypatch,tmp_path):
     monkeypatch.setattr(f.cv2.dnn,'readNetFromONNX',lambda _:Net())
     boxes=f._yolo_people(np.zeros((640,640,3),dtype=np.uint8))
     assert len(boxes)==1 and boxes[0]['detector']=='yolo_person'
+
+def test_detector_extra_declares_pinned_exporter_imports():
+    data=tomllib.loads((Path(__file__).parents[1]/'pyproject.toml').read_text())
+    extra=' '.join(data['project']['optional-dependencies']['detector']).lower()
+    for name in ('torchvision','pillow','pyyaml','scipy','pandas','seaborn','ipython','onnxscript','setuptools'):
+        assert name in extra

@@ -36,25 +36,46 @@ def crop_x(width:int,height:int,position:str)->int:
 def _bbox(value:dict[str,Any])->dict[str,float]:
     b=value.get('bbox',value); x,y,w,h=(b.get(k,0.) for k in ('x','y','width','height')); return {'x':float(x),'y':float(y),'width':float(w),'height':float(h),**{k:v for k,v in value.items() if k not in {'x','y','width','height','bbox'}}}
 def _model_path()->Path:
-    """Standalone optional model location; never borrows another application's cache."""
-    return Path(__file__).resolve().parents[2]/'cache'/'models'/'movie-broll'/PERSON_MODEL_NAME
+    """Project-owned cache works both from source and an installed editable wheel."""
+    roots=[Path.cwd(),*Path(__file__).resolve().parents]
+    root=next((x for x in roots if (x/'pyproject.toml').is_file() and (x/'src').is_dir()),Path.cwd())
+    return root/'cache'/'models'/'movie-broll'/PERSON_MODEL_NAME
 def _weights_path()->Path: return _model_path().with_name(PERSON_WEIGHTS_NAME)
+def _missing_detector_dependencies()->list[str]:
+    import importlib.util
+    required={'torch':'torch','torchvision':'torchvision','onnx':'onnx','onnxscript':'onnxscript','Pillow':'PIL','PyYAML':'yaml','scipy':'scipy','pandas':'pandas','requests':'requests','tqdm':'tqdm','matplotlib':'matplotlib','seaborn':'seaborn','IPython':'IPython','setuptools':'pkg_resources'}
+    return [name for name,module in required.items() if importlib.util.find_spec(module) is None]
+def _command_failure(step:str,result:subprocess.CompletedProcess[str])->RuntimeError:
+    detail=(result.stderr or result.stdout or '').strip().splitlines()
+    tail='\n'.join(detail[-12:]) or 'no subprocess output'
+    return RuntimeError(f'person detector preflight failed: {step} exited {result.returncode}: {tail}')
 def _export_yolov5n(weights:Path,target:Path)->None:
     """Use the official, pinned YOLOv5 exporter; never guess an ONNX asset URL."""
     source=target.parent/'.yolov5-export-source'; output=target.with_suffix('.export.tmp.onnx')
+    # An interrupted export may leave this owned scratch directory behind.
+    if source.exists(): shutil.rmtree(source)
     try:
-        subprocess.run(['git','clone','--depth','1','--branch','v7.0',YOLOV5_EXPORT_REPOSITORY,str(source)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-        subprocess.run([sys.executable,str(source/'export.py'),'--weights',str(weights),'--include','onnx','--imgsz','640','640','--device','cpu'],check=True,cwd=source,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-        produced=weights.with_suffix('.onnx')
-        if not produced.is_file(): raise RuntimeError('official YOLOv5 export did not produce ONNX')
+        clone=subprocess.run(['git','clone','--depth','1','--branch','v7.0',YOLOV5_EXPORT_REPOSITORY,str(source)],text=True,capture_output=True)
+        if clone.returncode: raise _command_failure('official YOLOv5 v7.0 clone',clone)
+        # YOLOv5 v7.0 predates Torch 2.6's secure weights-only default. The
+        # checkpoint is the explicitly pinned official release acquired above.
+        experimental=source/'models'/'experimental.py'; text=experimental.read_text(); old="torch.load(attempt_download(w), map_location='cpu')"
+        if old not in text: raise RuntimeError('person detector preflight failed: pinned YOLOv5 exporter load hook changed unexpectedly')
+        experimental.write_text(text.replace(old,"torch.load(attempt_download(w), map_location='cpu', weights_only=False)"))
+        export=subprocess.run([sys.executable,str(source/'export.py'),'--weights',str(weights),'--include','onnx','--imgsz','640','640','--device','cpu'],cwd=source,text=True,capture_output=True)
+        if export.returncode: raise _command_failure('YOLOv5n ONNX export',export)
+        produced=next((x for x in (weights.with_suffix('.onnx'),source/f'{weights.stem}.onnx') if x.is_file()),None)
+        if produced is None: raise RuntimeError('official YOLOv5 export did not produce ONNX: '+('\n'.join(((export.stderr or export.stdout or '')).splitlines()[-12:])))
         shutil.move(str(produced),output); output.replace(target)
-    except (OSError,subprocess.CalledProcessError) as error:
-        output.unlink(missing_ok=True); raise RuntimeError('person detector preflight failed: YOLOv5n export requires project detector dependencies (torch and onnx) and official exporter access') from error
+    except OSError as error:
+        output.unlink(missing_ok=True); raise RuntimeError(f'person detector preflight failed: official exporter execution failed: {error}') from error
     finally: shutil.rmtree(source,ignore_errors=True)
 def person_detector_preflight(provision:bool=True)->dict[str,Any]:
     """Provision and load the project-owned ONNX model before asset processing."""
     path=_model_path(); meta=path.with_suffix('.json')
     if not path.is_file() and provision:
+        missing=_missing_detector_dependencies()
+        if missing: raise RuntimeError("person detector preflight failed: missing detector dependencies: "+', '.join(missing)+". Install project detector extra: pip install '.[detector]'")
         path.parent.mkdir(parents=True,exist_ok=True); weights=_weights_path(); temp=weights.with_suffix('.download.tmp')
         try:
             if not weights.is_file():
@@ -66,11 +87,11 @@ def person_detector_preflight(provision:bool=True)->dict[str,Any]:
     if not path.is_file() or path.stat().st_size < 1024: raise RuntimeError(f'person detector preflight failed: required model is missing or incomplete: {path}')
     digest=sha256_file(path)
     try:
-        net=cv2.dnn.readNetFromONNX(str(path)); net.setInput(cv2.dnn.blobFromImage(np.zeros((64,64,3),dtype=np.uint8),1/255.,(640,640),swapRB=True)); output=net.forward()
+        net=cv2.dnn.readNetFromONNX(str(path)); net.setInput(cv2.dnn.blobFromImage(np.zeros((64,64,3),dtype=np.uint8),1/255.,(640,640),swapRB=True)); output=net.forward(); smoke_shape=list(np.asarray(output).shape)
         if np.asarray(output).size < 6: raise RuntimeError('ONNX smoke inference returned no usable detections tensor')
     except cv2.error as error: raise RuntimeError(f'person detector preflight failed: OpenCV cannot load {path}: {error}') from error
     write_json(meta,{'model_id':PERSON_MODEL_ID,'model_format':'onnx','model_version':PERSON_MODEL_VERSION,'weights_source':PERSON_WEIGHTS_URL,'sha256':digest})
-    global _PERSON_RUNTIME; _PERSON_RUNTIME={'model_id':PERSON_MODEL_ID,'model_format':'onnx','model_version':PERSON_MODEL_VERSION,'model_path':str(path),'model_sha256':digest,'backend':'opencv_dnn_cpu','loaded':True,'smoke_inference_passed':True,'inference_executed':False}
+    global _PERSON_RUNTIME; _PERSON_RUNTIME={'model_id':PERSON_MODEL_ID,'model_format':'onnx','model_version':PERSON_MODEL_VERSION,'model_path':str(path),'model_sha256':digest,'backend':'opencv_dnn_cpu','loaded':True,'smoke_inference_passed':True,'smoke_output_shape':smoke_shape,'inference_executed':False}
     return dict(_PERSON_RUNTIME)
 def _yolo_people(frame:np.ndarray)->list[dict[str,Any]]:
     """Best-effort CPU YOLO ONNX inference when the documented local model exists."""

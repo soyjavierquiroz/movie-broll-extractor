@@ -12,7 +12,7 @@ dependencies = ["google-genai==2.22.0", "python-dotenv==1.2.3", "scenedetect>=0.
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
-detector = ["torch>=2.4", "onnx>=1.16"]
+detector = ["torch>=2.4", "torchvision>=0.19", "onnx>=1.16", "onnxscript>=0.1", "Pillow>=10", "PyYAML>=6", "scipy>=1.10", "pandas>=2", "requests>=2.31", "tqdm>=4.64", "matplotlib>=3.7", "seaborn>=0.12", "ipython>=8", "setuptools>=77,<81"]
 
 [project.scripts]
 movie-broll = "movie_broll.cli:main"
