@@ -23,6 +23,13 @@ def test_stable_registry_slug_and_flat_filenames(tmp_path):
     assert slugify('Mujer: reflexión sola!')=='mujer-reflexion-sola'
     registry=json.loads((tmp_path/'asset_registry.json').read_text()); assert registry['events']['VE_000123']['asset_id']=='rc001'
 
+def test_asset_registry_distinguishes_window_scoped_events_without_changing_stability(tmp_path):
+    first=event(); first['visual_event_id']='SW_05_VE_000001'
+    second=event(); second['visual_event_id']='SW_06_VE_000001'
+    assert asset_identity(tmp_path,'romper-el-circulo',first)[0] == 'rc001'
+    assert asset_identity(tmp_path,'romper-el-circulo',first)[0] == 'rc001'
+    assert asset_identity(tmp_path,'romper-el-circulo',second)[0] == 'rc002'
+
 def test_crop_is_subject_and_shot_aware_not_fixed_center():
     e=event('left'); shots={'S1':{'start_seconds':0,'end_seconds':.5,'primary_subject_position':'left'},'S2':{'start_seconds':.5,'end_seconds':1,'primary_subject_position':'right'}}
     plan=shot_crop_plan(e,shots,160,120)

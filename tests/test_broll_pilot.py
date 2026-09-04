@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from movie_broll.broll_pilot import (PILOT_WINDOW, _narrative_context, apply_semantic_scarcity,
     boundary_validation, candidates, dedupe, discover, ffmpeg_export_command, generate_groups,
-    probe, review_reel_command, score_candidate, _duration_fit)
+    pilot_event_id, probe, review_reel_command, score_candidate, _duration_fit)
 from movie_broll.cli import main
 from movie_broll.broll_semantics import validate_response
 
@@ -171,6 +171,80 @@ def test_selected_window_flows_to_isolated_output_and_semantic_checkpoint(monkey
     assert calls == [('SW_03', report['output']/'semantic_checkpoints'),('SW_01', other['output']/'semantic_checkpoints')]
     saved=json.loads((report['output']/'candidates.json').read_text())
     assert saved['window_id'] == 'SW_03' and saved['candidates'][0]['window_id'] == 'SW_03'
+    assert saved['candidates'][0]['visual_event_id'] == 'SW_03_VE_000001'
+    other_saved=json.loads((other['output']/'candidates.json').read_text())
+    assert other_saved['candidates'][0]['visual_event_id'] == 'SW_01_VE_000001'
+
+def test_pilot_event_ids_are_window_scoped_and_deterministic():
+    assert pilot_event_id('SW_05',1) == 'SW_05_VE_000001'
+    assert pilot_event_id('SW_05',1) == pilot_event_id('SW_05',1)
+    assert pilot_event_id('SW_05',1) != pilot_event_id('SW_06',1)
+
+def _semantic_item(candidate_id='BRC_0001', source_shot_id='S1'):
+    return {'candidate_id':candidate_id,'visual_event_id':'VE_000001','start_frame':10,'end_frame_exclusive':20,
+            'start_seconds':0.,'end_seconds':1.,'duration_seconds':1.,'source_shot_ids':[source_shot_id]}
+
+def _semantic_files(tmp_path):
+    movie=tmp_path/'film.mp4'; srt=tmp_path/'subtitles.srt'; narrative=tmp_path/'map.json'
+    movie.write_bytes(b'movie'); srt.write_text(''); narrative.write_text('{"segments":[]}')
+    return movie,srt,narrative
+
+def test_semantic_status_is_scoped_to_current_window_and_legacy_ids_do_not_collide(monkeypatch,tmp_path):
+    import movie_broll.broll_pilot as b
+    from movie_broll.broll_semantics import SemanticResponse
+    from movie_broll.processing_ledger import ProcessingLedger
+    movie,srt,narrative=_semantic_files(tmp_path); movie_id=movie.parent.name; run=tmp_path/'film'; pilot=run/'broll-pilot-v1'; ledger=ProcessingLedger(run,movie_id,{})
+    legacy=_semantic_item(); ledger.register(legacy,'old'); ledger.stage('VE_000001','semantic','FAILED_FINAL',error='historical')
+    other=_semantic_item('BRC_0002'); other['visual_event_id']='VE_000002'; ledger.register(other,'other'); ledger.stage('VE_000002','semantic','PENDING')
+    monkeypatch.setattr(b,'candidate_contact_sheet',lambda *args:b'jpg')
+    class Provider:
+        identifier='fake'; model='fake'
+        def generate(self,*args):
+            data=_semantic(); data['visual']['shot_focus_plan'][0]['shot_id']=args[1]['source_shot_ids'][0]
+            return SemanticResponse(data,{'prompt_tokens':0,'response_tokens':0,'thinking_tokens':0,'cached_tokens':0,'total_tokens':0})
+    item=_semantic_item()
+    report=b.semantic_validate([item],movie,srt,narrative,pilot/'SW_06'/'semantic_checkpoints',24,'SW_06',Provider())
+    assert item['visual_event_id'] == 'SW_06_VE_000001'
+    assert report['status'] == 'COMPLETE' and report['complete'] == 1
+    assert report['pending'] == report['semantic_pending'] == report['semantic_failed_retryable'] == report['semantic_failed_final'] == 0
+    assert report['remaining_count'] == 0
+    summary=json.loads((run/'progress_summary.json').read_text())
+    assert summary['window_id'] == 'SW_06' and summary['status'] == 'COMPLETE'
+    assert 'SW_06_VE_000001' in ProcessingLedger(run,movie_id,{}).data['events']
+
+def test_invalid_provider_focus_plan_has_two_bounded_resume_safe_attempts(monkeypatch,tmp_path):
+    import movie_broll.broll_pilot as b
+    from movie_broll.broll_semantics import SemanticResponse
+    movie,srt,narrative=_semantic_files(tmp_path); monkeypatch.setattr(b,'candidate_contact_sheet',lambda *args:b'jpg')
+    class Provider:
+        identifier='fake'; model='fake'
+        def __init__(self): self.calls=0
+        def generate(self,*args):
+            self.calls+=1
+            return SemanticResponse(_semantic(),{'prompt_tokens':0,'response_tokens':0,'thinking_tokens':0,'cached_tokens':0,'total_tokens':0})
+    provider=Provider(); checkpoint=tmp_path/'broll-pilot-v1'/'SW_06'/'semantic_checkpoints'
+    first=b.semantic_validate([_semantic_item(source_shot_id='SW_06_SHOT_0001')],movie,srt,narrative,checkpoint,24,'SW_06',provider)
+    assert first['semantic_pending'] == 0 and first['semantic_failed_retryable'] == 1 and first['semantic_failed_final'] == 0 and first['remaining_count'] == 1
+    second=b.semantic_validate([_semantic_item(source_shot_id='SW_06_SHOT_0001')],movie,srt,narrative,checkpoint,24,'SW_06',provider)
+    assert provider.calls == 2 and second['semantic_failed_retryable'] == 0 and second['semantic_failed_final'] == 1
+    third=b.semantic_validate([_semantic_item(source_shot_id='SW_06_SHOT_0001')],movie,srt,narrative,checkpoint,24,'SW_06',provider)
+    assert provider.calls == 2 and third['semantic_failed_final'] == 1
+
+def test_namespaced_event_reuses_matching_checkpoint_fingerprint(monkeypatch,tmp_path):
+    import movie_broll.broll_pilot as b
+    from movie_broll.broll_semantics import SemanticResponse
+    movie,srt,narrative=_semantic_files(tmp_path); monkeypatch.setattr(b,'candidate_contact_sheet',lambda *args:b'jpg')
+    class Provider:
+        identifier='fake'; model='fake'
+        def __init__(self): self.calls=0
+        def generate(self,*args):
+            self.calls+=1; data=_semantic(); data['visual']['shot_focus_plan'][0]['shot_id']=args[1]['source_shot_ids'][0]
+            return SemanticResponse(data,{'prompt_tokens':0,'response_tokens':0,'thinking_tokens':0,'cached_tokens':0,'total_tokens':0})
+    provider=Provider(); checkpoint=tmp_path/'broll-pilot-v1'/'SW_06'/'semantic_checkpoints'
+    b.semantic_validate([_semantic_item()],movie,srt,narrative,checkpoint,24,'SW_06',provider)
+    rerun=_semantic_item(); rerun['visual_event_id']='VE_000001'
+    report=b.semantic_validate([rerun],movie,srt,narrative,checkpoint,24,'SW_06',provider)
+    assert rerun['visual_event_id'] == 'SW_06_VE_000001' and report['reused'] == 1 and provider.calls == 1
 
 def test_structural_review_can_be_promoted_and_structural_keep_can_be_demoted():
     reviewed={'structural_decision':'REVIEW','editorial':_semantic()['editorial']}
@@ -254,7 +328,7 @@ def test_quota_stops_later_events_and_resume_reuses_checkpoints(monkeypatch,tmp_
     first=Provider(True)
     report=b.semantic_validate(items,movie,srt,narrative,tmp_path/'broll-pilot-v1'/'SW_01'/'semantic_checkpoints',24,'SW_01',first)
     assert first.calls==['BRC_0001','BRC_0002','BRC_0003'] and report['status']=='PARTIAL_QUOTA'
-    assert report['complete']==2 and report['pending']==3
+    assert report['complete']==2 and report['pending']==2 and report['remaining_count']==3
     second=Provider()
     report=b.semantic_validate(items,movie,srt,narrative,tmp_path/'broll-pilot-v1'/'SW_01'/'semantic_checkpoints',24,'SW_01',second)
     assert second.calls==['BRC_0003','BRC_0004','BRC_0005']
