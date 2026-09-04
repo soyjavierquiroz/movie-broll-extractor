@@ -11,7 +11,7 @@ from .utils import sha256_file, write_json
 
 MOVIE_CODES={"romper-el-circulo":"rc"}; SAFE_MARGIN=.08
 # This is deliberately persistent: it is part of every vertical-only reuse key.
-REFRAME_ALGORITHM_VERSION="3e.2.3.8-source-preserving-export-v5"
+REFRAME_ALGORITHM_VERSION="3e.2.3.8-source-preserving-export-v6"
 SHOT_FOCUS_SCHEMA_VERSION="shot_focus_plan_v1"
 LOCAL_DETECTOR_VERSION="yolov5n-onnx-person+haar-face-v1"
 PERSON_CANDIDATE_CONFIDENCE=.05; PERSON_NMS_IOU=.45
@@ -205,8 +205,18 @@ def build_shot_crop_plan(source_video:Path,event:dict[str,Any],shots:dict[str,di
         focus=_union(focus_boxes) if focus_boxes else None; preserve=direct['interaction_requirement']=='simultaneous' or bool(direct.get('required_secondary_subjects',[])); composition=[focus] if focus else []
         if (preserve or strategy=='interaction_aware') and all_boxes: composition=[_union(all_boxes)]
         composition+=action; required=_union(composition) if composition else focus; impossible=bool(required and required['width']>crop*(1-2*SAFE_MARGIN) and (preserve or action))
-        if required and required['width']<=crop*(1-2*SAFE_MARGIN): anchors=_smooth([(t,_anchor(required,width,crop)) for t,_ in samples] or [(start,_anchor(required,width,crop))],crop,start,end)
-        elif samples: anchors=_smooth(samples,crop,start,end)
+        if (preserve or action) and required and required['width']<=crop*(1-2*SAFE_MARGIN):
+            anchors=_smooth(
+                [(t,_anchor(required,width,crop)) for t,_ in samples]
+                or [(start,_anchor(required,width,crop))],
+                crop,start,end,
+            )
+        elif samples:
+            # A normal subject follows its sampled geometry inside THIS
+            # technical shot. Tracking never carries across a hard cut.
+            anchors=_smooth(samples,crop,start,end)
+        elif required and required['width']<=crop*(1-2*SAFE_MARGIN):
+            anchors=[{'time':start,'x':float(_anchor(required,width,crop))}]
         else:
             pos=str(shot.get('primary_subject_position',event.get('visual',{}).get('primary_subject_position','center'))).lower(); anchors=[{'time':start,'x':float(crop_x(width,height,pos))}]
         required_person=direct['focus_subject'] in {'woman','man','multiple_people'}
@@ -247,7 +257,18 @@ def render_vertical(source_movie:Path,output:Path,event:dict[str,Any],plan:list[
         while n<total:
             ok,frame=cap.read()
             if not ok: break
-            relative=n/fps; rule=next((x for x in plan if matches(x,n,relative)),plan[-1]); x=max(0,min(w-cw,_x_at(rule,float(event['start_seconds'])+relative))); process.stdin.write(np.ascontiguousarray(frame[:,x:x+cw]).tobytes()); n+=1
+            relative=n/fps
+            matching_rules=[x for x in plan if matches(x,n,relative)]
+            if len(matching_rules) != 1:
+                raise RuntimeError(
+                    'vertical shot plan coverage error: '
+                    f'frame={n} matches={len(matching_rules)} '
+                    f'shots={[x.get("shot_id") for x in matching_rules]}'
+                )
+            rule=matching_rules[0]
+            x=max(0,min(w-cw,_x_at(rule,float(event['start_seconds'])+relative)))
+            process.stdin.write(np.ascontiguousarray(frame[:,x:x+cw]).tobytes())
+            n+=1
         process.stdin.close(); stderr=process.stderr.read().decode(errors='replace'); result=process.wait()
     except (BrokenPipeError,OSError) as error:
         stderr=str(error)
@@ -426,6 +447,46 @@ def _remove_incomplete_assets(assets:Path)->None:
         if file.is_file():
             base=(file.name[1:] if file.name.startswith('v') else file.name).rsplit('.',1)[0]
             if not _complete_package(assets,base):file.unlink()
+
+
+def _promote_complete_package(staged:list[Path]|tuple[Path,...],final:list[Path])->None:
+    """Publish one flat Asset Hub package as 5/5 or leave assets at 0/5.
+
+    True multi-file filesystem atomicity is impossible.  This helper therefore
+    validates the staging set first and rolls back every destination already
+    promoted if a normal exception or interrupt occurs mid-promotion.
+    A hard SIGKILL is reconciled by _remove_incomplete_assets on next startup.
+    """
+    staged=list(staged)
+    final=list(final)
+
+    if len(staged)!=5 or len(final)!=5:
+        raise RuntimeError('asset package promotion requires exactly 5 files')
+
+    if not all(x.is_file() for x in staged):
+        missing=[x.name for x in staged if not x.is_file()]
+        raise RuntimeError(f'asset package staging incomplete: {missing}')
+
+    if any(x.exists() for x in final):
+        dirty=[x.name for x in final if x.exists()]
+        raise RuntimeError(f'asset package destination is not clean: {dirty}')
+
+    promoted:list[Path]=[]
+
+    try:
+        # Metadata is deliberately last.
+        for source,destination in zip(staged,final):
+            shutil.move(str(source),str(destination))
+            promoted.append(destination)
+
+        if not all(x.is_file() for x in final):
+            raise RuntimeError('asset package promotion postcondition failed')
+
+    except BaseException:
+        # Asset Hub must never retain 1/5 .. 4/5 after a catchable failure.
+        for destination in reversed(promoted):
+            destination.unlink(missing_ok=True)
+        raise
 def _existing_registered_package(run:Path,assets:Path,event:dict[str,Any])->bool:
     """A complete prior package already has validated semantics; metadata changes do not refresh them."""
     try:
@@ -526,6 +587,37 @@ def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False,
         if decision == 'REVIEW_VERTICAL':
             review+=1; review_dir.mkdir(parents=True,exist_ok=True); review_video=review_dir/f'v{base}.mp4'; review_video.unlink(missing_ok=True); shutil.move(str(v),review_video); write_json(review_dir/f'{base}.json',{'schema_version':'vertical_review_v1','asset':{'id':aid,'source_asset_id':eid},'asset_hub_ready':False,'review_vertical_file':review_video.name,'media':{'vertical':{'file':review_video.name,'source_media':'movie.mp4','export_mode':'source_crop_encode','generation_from_source':1}},'analysis':{'semantic_ready':False,'final_asset_semantics_validated':False},'shot_focus_plan':e.get('visual',{}).get('shot_focus_plan',[]),'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'reframe_fingerprint':reframe_fp,'validation':vertical}); ledger.stage(eid,'finalization','COMPLETE',decision='REVIEW_VERTICAL',asset_hub_ready=False,reframe_fingerprint=reframe_fp); safe_cleanup(work,keep_debug_artifacts); continue
         vertical=_technical_properties(v,vertical); htime=thumbnail(h,ht); ledger.stage(eid,'horizontal_thumbnail','COMPLETE'); vtime=thumbnail(v,vt); ledger.stage(eid,'vertical_thumbnail','COMPLETE',reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,vertical_validation_version=VERTICAL_VALIDATION_VERSION,reframe_fingerprint=reframe_fp); write_json(md,_asset_metadata(movie_id,source_sha256,aid,slug,e,h,v,ht,vt,htime,vtime,horizontal,vertical,horizontal_mode,horizontal_generation,plan,attempt,reframe_fp))
-        for src,dst in zip((h,v,ht,vt,md),final):shutil.move(str(src),dst)
+        try:
+            staged_metadata=json.loads(md.read_text())
+            if not _asset_metadata_contract_valid(staged_metadata,stage):
+                raise RuntimeError('staged asset package failed metadata/hash validation')
+
+            _promote_complete_package((h,v,ht,vt,md),final)
+
+            published_metadata=json.loads(final[-1].read_text())
+            if not _complete_package(assets,base):
+                raise RuntimeError('published asset package is not 5/5')
+            if not _asset_metadata_contract_valid(published_metadata,assets):
+                raise RuntimeError('published asset package failed metadata/hash validation')
+
+        except (OSError,RuntimeError,json.JSONDecodeError) as error:
+            _retire_package(assets,base)
+            failed_retryable+=1
+            ledger.stage(
+                eid,
+                'metadata',
+                'FAILED_RETRYABLE',
+                error=str(error),
+            )
+            ledger.stage(
+                eid,
+                'finalization',
+                'FAILED_RETRYABLE',
+                asset_hub_ready=False,
+                error=str(error),
+                reframe_fingerprint=reframe_fp,
+            )
+            continue
+
         old.unlink(missing_ok=True); (review_dir/f'{base}.json').unlink(missing_ok=True); (review_dir/f'v{base}.mp4').unlink(missing_ok=True); ledger.stage(eid,'metadata','COMPLETE',path=str(final[-1])); ledger.stage(eid,'cleanup','COMPLETE',removed_bytes=safe_cleanup(work,keep_debug_artifacts)); ledger.stage(eid,'finalization','COMPLETE',decision='PASS',asset_hub_ready=True,reframe_fingerprint=reframe_fp); completed+=1
     final_bytes=sum(x.stat().st_size for x in assets.glob('*') if x.is_file()); temp_bytes=sum(x.stat().st_size for x in work.rglob('*') if x.is_file()); status='PARTIAL' if failed_retryable or failed_final else 'COMPLETE'; ledger.summary(status=status,final_assets=completed,vertical_review=review,vertical_reused=reused,vertical_review_reused=review_reused,horizontal_reused=horizontal_reused,semantic_reused=semantic_reused,vertical_failed_retryable=failed_retryable,vertical_failed_final=failed_final,disk={'final_assets_bytes':final_bytes,'temporary_bytes':temp_bytes}); return {'status':status,'completed':completed,'review':review,'reused':reused,'review_reused':review_reused,'horizontal_reused':horizontal_reused,'semantic_reused':semantic_reused,'failed_retryable':failed_retryable,'failed_final':failed_final,'assets':assets.relative_to(run).as_posix(),'review_dir':review_dir.relative_to(run).as_posix()}

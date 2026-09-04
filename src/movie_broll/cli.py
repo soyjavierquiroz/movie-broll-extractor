@@ -43,6 +43,11 @@ def main(argv=None):
  select_next.add_argument("input_dir",help="input/<movie-id> directory")
  process_cmd=sub.add_parser("process",help="process one complete movie production job")
  process_cmd.add_argument("input_dir",help="input/<movie-id> directory containing canonical movie.mp4 and subtitles.srt")
+ reset_cmd=sub.add_parser("reset",help="remove derived production state while preserving the canonical narrative map")
+ reset_cmd.add_argument("input_dir",help="canonical input/<movie-id> directory")
+ reset_mode=reset_cmd.add_mutually_exclusive_group(required=True)
+ reset_mode.add_argument("--dry-run",action="store_true",help="show exactly what would be removed without changing files")
+ reset_mode.add_argument("--execute",action="store_true",help="execute the reset after all safety checks pass")
  a=p.parse_args(argv)
  if a.command == "narrative":
   if a.narrative_command == "prepare":
@@ -111,6 +116,23 @@ def main(argv=None):
    print(f"[broll-pilot] semantic complete: {report.get('semantic_complete',0)}; reused: {report.get('semantic_reused',0)}; pending: {report.get('semantic_pending',0)}; retryable: {report.get('semantic_failed_retryable',0)}; failed: {report.get('semantic_failed_final',0)}")
    print(f"[broll-pilot] review reel: {output/'review_reel.mp4'}"); print(f"[broll-pilot] status: {report.get('status','COMPLETE')}"); return 0 if report.get('status','COMPLETE') == 'COMPLETE' else 1
   except (OSError,ValueError,FileNotFoundError,RuntimeError,subprocess.CalledProcessError) as error: print(f"error: {error}",file=sys.stderr); return 2
+ if a.command == "reset":
+  try:
+   from .reset import reset_run
+   report=reset_run(Path(a.input_dir),execute=bool(a.execute))
+   print(f"[reset] movie: {report['movie_id']}")
+   print(f"[reset] mode: {report['mode']}")
+   print(f"[reset] run: {report['run']}")
+   preserved=report['preserve']
+   print(f"[reset] PRESERVE {preserved['path']} ({preserved['size_bytes']} bytes)")
+   for item in report['delete']:
+    print(f"[reset] DELETE {item['path']} ({item['size_bytes']} bytes)")
+   print(f"[reset] delete total: {len(report['delete'])} paths; {report['delete_bytes']} bytes")
+   print(f"[reset] status: {report['status']}")
+   return 0
+  except (OSError,ValueError,FileNotFoundError,RuntimeError) as error:
+   print(f"error: {error}",file=sys.stderr)
+   return 2
  if a.command == "process":
   try:
    from .production import process

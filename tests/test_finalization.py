@@ -45,7 +45,7 @@ def test_true_vertical_render_validation_and_distinct_thumbnail_sources(tmp_path
 
 def test_asset_hub_metadata_v1_is_portable_self_contained_and_has_no_duplicate_identity(tmp_path):
     h,v=tmp_path/'asset.mp4',tmp_path/'vasset.mp4'; synthetic(h); e=event(people=[{'presentation':'woman','frame_role':'primary','position':'right'},{'presentation':'man','frame_role':'primary','position':'left'}])
-    e['narrative']={'literal_transcription':False,'segment_ids':['NARR_1']}; plan=shot_crop_plan(e,{},160,120); render_vertical(h,v,e,plan)
+    e['narrative']={'literal_transcription':False,'segment_ids':['NARR_1']}; plan=shot_crop_plan(e,{'S1':{'start_seconds':0.0,'end_seconds':0.5},'S2':{'start_seconds':0.5,'end_seconds':1.0}},160,120); render_vertical(h,v,e,plan)
     ht,vt=tmp_path/'asset.jpg',tmp_path/'vasset.jpg'; htime=thumbnail(h,ht); vtime=thumbnail(v,vt)
     horizontal={'status':'PASS','duration_seconds':1.,'width':160,'height':120,'fps':24.}; vertical={'status':'PASS','duration_seconds':1.,'width':90,'height':120,'fps':24.}
     data=_asset_metadata('film','a'*64,'rc001','changeable-slug',e,h,v,ht,vt,htime,vtime,horizontal,vertical,'source_encode',1,plan,1,'fingerprint')
@@ -337,3 +337,276 @@ def test_unsafe_stream_copy_falls_back_to_one_direct_source_encode(monkeypatch,t
     assert export_horizontal_from_source(source,event,output,160,120,24.)=='source_encode'
     assert commands[0][commands[0].index('-c:v')+1]=='copy'
     assert commands[1][commands[1].index('-i')+1]==str(source) and 'libx264' in commands[1]
+
+
+
+def test_render_rejects_gap_in_shot_plan(tmp_path):
+    import cv2
+    import numpy as np
+    import pytest
+
+    from movie_broll.finalization import render_vertical
+
+    source=tmp_path/'source.mp4'
+    output=tmp_path/'vertical.mp4'
+
+    writer=cv2.VideoWriter(
+        str(source),
+        cv2.VideoWriter_fourcc(*'mp4v'),
+        24.0,
+        (160,120),
+    )
+    for _ in range(24):
+        writer.write(np.zeros((120,160,3),dtype=np.uint8))
+    writer.release()
+
+    event={
+        'start_seconds':0.0,
+        'end_seconds':1.0,
+        'start_frame':0,
+        'end_frame_exclusive':24,
+    }
+
+    plan=[
+        {
+            'shot_id':'S1',
+            'start_seconds':0.0,
+            'end_seconds':0.5,
+            'render_start_frame':0,
+            'render_end_frame_exclusive':11,
+            'anchors':[{'time':0.0,'x':0.0}],
+            'x':0.0,
+        },
+        {
+            'shot_id':'S2',
+            'start_seconds':0.5,
+            'end_seconds':1.0,
+            'render_start_frame':12,
+            'render_end_frame_exclusive':24,
+            'anchors':[{'time':0.5,'x':70.0}],
+            'x':70.0,
+        },
+    ]
+
+    with pytest.raises(RuntimeError,match='coverage error'):
+        render_vertical(source,output,event,plan)
+
+
+def test_render_rejects_overlap_in_shot_plan(tmp_path):
+    import cv2
+    import numpy as np
+    import pytest
+
+    from movie_broll.finalization import render_vertical
+
+    source=tmp_path/'source.mp4'
+    output=tmp_path/'vertical.mp4'
+
+    writer=cv2.VideoWriter(
+        str(source),
+        cv2.VideoWriter_fourcc(*'mp4v'),
+        24.0,
+        (160,120),
+    )
+    for _ in range(24):
+        writer.write(np.zeros((120,160,3),dtype=np.uint8))
+    writer.release()
+
+    event={
+        'start_seconds':0.0,
+        'end_seconds':1.0,
+        'start_frame':0,
+        'end_frame_exclusive':24,
+    }
+
+    plan=[
+        {
+            'shot_id':'S1',
+            'start_seconds':0.0,
+            'end_seconds':0.6,
+            'render_start_frame':0,
+            'render_end_frame_exclusive':13,
+            'anchors':[{'time':0.0,'x':0.0}],
+            'x':0.0,
+        },
+        {
+            'shot_id':'S2',
+            'start_seconds':0.5,
+            'end_seconds':1.0,
+            'render_start_frame':12,
+            'render_end_frame_exclusive':24,
+            'anchors':[{'time':0.5,'x':70.0}],
+            'x':70.0,
+        },
+    ]
+
+    with pytest.raises(RuntimeError,match='coverage error'):
+        render_vertical(source,output,event,plan)
+
+
+
+def test_single_subject_tracks_temporal_samples_within_shot(monkeypatch,tmp_path):
+    import numpy as np
+    import movie_broll.finalization as f
+
+    monkeypatch.setattr(
+        f,
+        '_sample_frames',
+        lambda *args,**kwargs:[
+            (0.0,np.zeros((120,160,3),dtype=np.uint8)),
+            (0.5,np.zeros((120,160,3),dtype=np.uint8)),
+        ],
+    )
+
+    detections=iter([
+        [{
+            'bbox':{
+                'x':30,
+                'y':10,
+                'width':20,
+                'height':90,
+            },
+            'confidence':.9,
+        }],
+        [{
+            'bbox':{
+                'x':70,
+                'y':10,
+                'width':20,
+                'height':90,
+            },
+            'confidence':.9,
+        }],
+    ])
+
+    event={
+        'visual_event_id':'VE_TRACK',
+        'start_seconds':0.0,
+        'end_seconds':1.0,
+        'start_frame':0,
+        'end_frame_exclusive':24,
+        'source_shot_ids':['S1'],
+        'visual':{
+            'shot_focus_plan':[
+                {
+                    'shot_id':'S1',
+                    'focus_subject':'woman',
+                    'focus_position':'center',
+                    'focus_role':'primary',
+                    'interaction_requirement':'none',
+                }
+            ]
+        },
+    }
+
+    shots={
+        'S1':{
+            'shot_id':'S1',
+            'start_seconds':0.0,
+            'end_seconds':1.0,
+            'start_frame':0,
+            'end_frame_exclusive':24,
+        }
+    }
+
+    plan=f.build_shot_crop_plan(
+        tmp_path/'unused.mp4',
+        event,
+        shots,
+        160,
+        120,
+        detector=lambda _frame:next(detections),
+        sample_count=2,
+    )
+
+    assert len(plan)==1
+
+    anchors=plan[0]['anchors']
+
+    # The old implementation collapsed both temporal samples into the
+    # union bbox and therefore produced one static crop.
+    assert len(anchors) >= 2
+    assert anchors[0]['x'] != anchors[-1]['x']
+
+
+
+def test_complete_package_promotion_rolls_back_partial_move(monkeypatch,tmp_path):
+    import pytest
+    import movie_broll.finalization as f
+
+    stage=tmp_path/'stage'
+    assets=tmp_path/'assets'
+    stage.mkdir()
+    assets.mkdir()
+
+    names=[
+        'rc001-x.mp4',
+        'vrc001-x.mp4',
+        'rc001-x.jpg',
+        'vrc001-x.jpg',
+        'rc001-x.json',
+    ]
+
+    staged=[stage/name for name in names]
+    final=[assets/name for name in names]
+
+    for index,file in enumerate(staged):
+        file.write_bytes(f'staged-{index}'.encode())
+
+    real_move=f.shutil.move
+    calls={'count':0}
+
+    def fail_on_third_move(source,destination):
+        calls['count']+=1
+        if calls['count']==3:
+            raise OSError('simulated promotion failure')
+        return real_move(source,destination)
+
+    monkeypatch.setattr(
+        f.shutil,
+        'move',
+        fail_on_third_move,
+    )
+
+    with pytest.raises(
+        OSError,
+        match='simulated promotion failure',
+    ):
+        f._promote_complete_package(
+            staged,
+            final,
+        )
+
+    assert calls['count']==3
+    assert list(assets.iterdir())==[]
+
+
+def test_complete_package_promotion_publishes_exactly_five(tmp_path):
+    import movie_broll.finalization as f
+
+    stage=tmp_path/'stage'
+    assets=tmp_path/'assets'
+    stage.mkdir()
+    assets.mkdir()
+
+    names=[
+        'rc001-x.mp4',
+        'vrc001-x.mp4',
+        'rc001-x.jpg',
+        'vrc001-x.jpg',
+        'rc001-x.json',
+    ]
+
+    staged=[stage/name for name in names]
+    final=[assets/name for name in names]
+
+    for index,file in enumerate(staged):
+        file.write_bytes(f'staged-{index}'.encode())
+
+    f._promote_complete_package(
+        staged,
+        final,
+    )
+
+    assert sorted(x.name for x in assets.iterdir())==sorted(names)
+    assert all(x.is_file() for x in final)
