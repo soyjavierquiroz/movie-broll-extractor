@@ -114,7 +114,7 @@ def main(argv=None):
  if a.command == "process":
   try:
    from .production import process
-   report=process(Path(a.input_dir))
+   report=process(Path(a.input_dir),reporter=lambda line: print(line,flush=True))
    summary=report['summary']; source=summary['source']['movie_sha256'][:12]
    print(f"[process] movie: {summary['movie_id']}; source: {source}")
    print(f"[process] shots: {summary['technical_shots']}; visual events: {summary['visual_events']}")

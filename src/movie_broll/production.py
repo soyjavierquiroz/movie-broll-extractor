@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import time
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,6 +26,7 @@ from .visual import Window, build_shots, detect_cuts
 
 TECHNICAL_VERSION = "full_movie_technical_shots_v1"
 EVENT_VERSION = "full_movie_visual_events_v1"
+HEARTBEAT_SECONDS = 30
 
 
 def _utc() -> str:
@@ -36,6 +39,27 @@ def _root(input_dir: Path) -> Path:
 
 def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _bounded_operation(label: str, action: Any, report: Any, ledger: ProcessingLedger) -> Any:
+    """Keep tmux-visible liveness during decoder work without frame spam."""
+    began, done = time.monotonic(), threading.Event()
+    def heartbeat() -> None:
+        while not done.wait(HEARTBEAT_SECONDS):
+            elapsed = int(time.monotonic() - began)
+            report(f"[movie-broll] {label}: working (elapsed {elapsed//60:02d}:{elapsed%60:02d})")
+            ledger.log("PRODUCTION_HEARTBEAT", mode="production", stage=label, elapsed_seconds=elapsed)
+            try:
+                summary = _read_json(ledger.summary_path) if ledger.summary_path.exists() else {}
+                summary.update(updated_at=_utc(), stage=label, heartbeat_elapsed_seconds=elapsed, mode="production", status="RUNNING")
+                write_json(ledger.summary_path, summary)
+            except OSError:
+                pass
+    worker = threading.Thread(target=heartbeat, daemon=True); worker.start()
+    try:
+        return action()
+    finally:
+        done.set(); worker.join(timeout=1)
 
 
 def preflight(input_dir: Path) -> dict[str, Any]:
@@ -88,25 +112,28 @@ def _technical_shots(info: dict[str, Any]) -> list[dict[str, Any]]:
     return shots
 
 
-def _events(info: dict[str, Any], shots: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    path = info["run"] / "visual_events.json"
-    event_fp = fingerprint({"source_movie_sha256": info["movie_sha256"],
-                            "technical": TECHNICAL_VERSION, "grouping": EVENT_VERSION})
-    existing = _read_json(path) if path.exists() else {}
-    if existing.get("fingerprint") == event_fp:
-        return existing["events"]
-    add_context(shots, info["srt"], info["narrative"])
-    for signal, shot in zip(visual_signals(info["movie"], shots), shots):
+def _segment_store(info: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
+    path = info["run"] / "production_segments.json"
+    fp = fingerprint({"source_movie_sha256": info["movie_sha256"], "events": EVENT_VERSION})
+    data = _read_json(path) if path.exists() else {}
+    if data.get("fingerprint") != fp:
+        data = {"schema_version": "production_segments_v1", "fingerprint": fp, "segments": {}}
+    return path, data
+
+
+def _segment_events(info: dict[str, Any], segment: dict[str, Any], shots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Bound video decoding to one narrative segment and persist before Gemini."""
+    start, end = float(segment["start_seconds"]), float(segment["end_seconds"])
+    selected = [dict(x) for x in shots if float(x["start_seconds"]) >= start and float(x["end_seconds"]) <= end]
+    if not selected:
+        return []
+    add_context(selected, info["srt"], info["narrative"])
+    for signal, shot in zip(visual_signals(info["movie"], selected), selected):
         shot.update(signal)
-    events = candidates(shots)
-    # Identity comes from source-frame authority, rather than a window ordinal.
-    # Thus it is stable for the same full movie and cannot collide with pilots.
+    events = candidates(selected)
     for event in events:
-        event["visual_event_id"] = "VE_" + fingerprint({"start": event["start_frame"],
-                                                            "end": event["end_frame_exclusive"],
-                                                            "shots": event["source_shot_ids"]})[:16]
-    write_json(path, {"schema_version": "visual_events_v1", "version": EVENT_VERSION,
-                      "fingerprint": event_fp, "events": events})
+        event["visual_event_id"] = "VE_" + fingerprint({"segment": segment["segment_id"], "start": event["start_frame"],
+                                                            "end": event["end_frame_exclusive"], "shots": event["source_shot_ids"]})[:16]
     return events
 
 
@@ -128,15 +155,18 @@ def _invalidate_source_media(run: Path, old_sha: str | None, current_sha: str) -
 
 
 def _summary(info: dict[str, Any], ledger: ProcessingLedger, events: list[dict[str, Any]], state: str,
-             final: dict[str, Any] | None = None) -> dict[str, Any]:
+             final: dict[str, Any] | None = None, *, stage: str = "production", segments_total: int = 0,
+             segments_complete: int = 0, timings: dict[str, float] | None = None,
+             technical_shot_count: int = 0) -> dict[str, Any]:
     records = ledger.data["events"].values()
     semantic = [x.get("stages", {}).get("semantic", {}) for x in records]
     editorial = {key: sum(1 for x in events if x.get("editorial", {}).get("decision") == key)
                  for key in ("KEEP", "REVIEW", "REJECT")}
     run = info["run"]
-    value = {"schema_version": "production_progress_summary_v1", "movie_id": run.name,
+    value = {"schema_version": "production_progress_summary_v1", "movie_id": run.name, "mode": "production", "status": state,
              "source": {"movie_sha256": info["movie_sha256"], "srt_sha256": info["srt_sha256"]},
-             "run_state": state, "updated_at": _utc(), "technical_shots": len(_technical_shots(info)),
+             "run_state": state, "stage": stage, "updated_at": _utc(), "technical_shots": technical_shot_count,
+             "segments_total": segments_total, "segments_complete": segments_complete, "timings_seconds": timings or {},
              "visual_events": len(events),
              "semantic": {"complete": sum(x.get("status") == "COMPLETE" for x in semantic),
                           "retryable": sum(x.get("status") == "FAILED_RETRYABLE" for x in semantic),
@@ -151,7 +181,9 @@ def _summary(info: dict[str, Any], ledger: ProcessingLedger, events: list[dict[s
     return value
 
 
-def process(input_dir: Path, provider: Any = None, model: str = "gemini-3.6-flash") -> dict[str, Any]:
+def process(input_dir: Path, provider: Any = None, model: str = "gemini-3.6-flash", reporter: Any = None) -> dict[str, Any]:
+    report = reporter or (lambda message: None)
+    started = time.monotonic()
     info = preflight(input_dir)
     # A supplied test/provider implementation is already configured.  The CLI
     # path must fail before video traversal when Gemini credentials are absent.
@@ -160,6 +192,11 @@ def process(input_dir: Path, provider: Any = None, model: str = "gemini-3.6-flas
         load_dotenv(_root(input_dir) / ".env")
         if not os.getenv("GEMINI_API_KEY"):
             raise RuntimeError("provider configuration missing: GEMINI_API_KEY")
+    report(f"[movie-broll] movie: {input_dir.name}")
+    report(f"[movie-broll] source: {info['movie_sha256'][:12]}...")
+    video = info["metadata"]["video"]
+    report(f"[movie-broll] media: {video['width']}x{video['height']} @ {video['fps']}")
+    report("[movie-broll] Narrative Map: REUSED")
     source_path = info["run"] / "source_fingerprint.json"
     # Missing production provenance is deliberately incompatible: legacy pixel
     # artifacts must never be promoted merely because names/frame IDs coincide.
@@ -169,22 +206,46 @@ def process(input_dir: Path, provider: Any = None, model: str = "gemini-3.6-flas
     ledger = ProcessingLedger(info["run"], input_dir.name, {"movie_sha256": info["movie_sha256"],
                               "srt_sha256": info["srt_sha256"], "narrative_sha256": sha256_file(info["narrative"]),
                               "orchestrator_version": "production_v1", "model": model})
+    narrative_segments = sorted(_read_json(info["narrative"])["segments"], key=lambda x: (float(x["start_seconds"]), x["segment_id"]))
+    _summary(info, ledger, [], "RUNNING", stage="preflight", segments_total=len(narrative_segments), timings={"preflight_seconds": time.monotonic()-started})
+    ledger.log("PRODUCTION_STARTED", mode="production")
+    ledger.log("PREFLIGHT_COMPLETE", mode="production")
+    technical_started = time.monotonic()
     shots = _technical_shots(info)
-    events = _events(info, shots)
-    # semantic_validate is the existing one-request-per-Visual-Event engine.
-    semantic = semantic_validate(events, info["movie"], info["srt"], info["narrative"],
-                                 info["run"] / "semantic_checkpoints", float(info["metadata"]["video"]["fps"]),
-                                 "FULL_MOVIE", provider=provider, model=model, preserve_event_ids=True)
-    if semantic.get("quota_exhausted"):
-        summary = _summary(info, ledger, events, "PARTIAL_PROVIDER")
-        return {"status": "PARTIAL_PROVIDER", "summary": summary, "semantic": semantic}
-    apply_semantic_scarcity(events)
-    write_json(info["run"] / "visual_events.json", {"schema_version": "visual_events_v1", "version": EVENT_VERSION,
-               "fingerprint": fingerprint({"source_movie_sha256": info["movie_sha256"], "technical": TECHNICAL_VERSION, "grouping": EVENT_VERSION}), "events": events})
-    # The detector is required only when a validated KEEP needs vertical geometry.
-    if any(x.get("editorial", {}).get("decision") == "KEEP" and x.get("editorial", {}).get("status") == "VALIDATED" for x in events):
-        person_detector_preflight()
-    final = finalize_pilot(input_dir, "FULL_MOVIE", candidates=events,
-                           shots={x["shot_id"]: x for x in shots})
-    state = "COMPLETE" if final["status"] == "COMPLETE" else "PARTIAL"
-    return {"status": state, "summary": _summary(info, ledger, events, state, final), "semantic": semantic, "finalization": final}
+    report(f"[movie-broll] technical shots: REUSED {len(shots)}")
+    ledger.log("TECHNICAL_SHOTS_REUSED", mode="production", count=len(shots))
+    _summary(info, ledger, [], "RUNNING", stage="technical_shots", segments_total=len(narrative_segments),
+             timings={"technical_shots_seconds": time.monotonic()-technical_started}, technical_shot_count=len(shots))
+    store_path, store = _segment_store(info); all_events=[]; finals=[]; semantic_reports=[]
+    try:
+        for index, segment in enumerate(narrative_segments, 1):
+            sid = segment["segment_id"]; record = store["segments"].setdefault(sid, {"status": "PENDING", "segment": segment})
+            if record.get("status") == "COMPLETE":
+                all_events.extend(record.get("events", [])); continue
+            record["status"] = "RUNNING"; write_json(store_path, store)
+            ledger.log("SEGMENT_RUNNING", mode="production", segment_id=sid, segment_index=index, segments_total=len(narrative_segments))
+            report(f"[movie-broll] building Visual Events: segment {index}/{len(narrative_segments)}")
+            event_started=time.monotonic(); events=_bounded_operation(f"visual-events segment {index}/{len(narrative_segments)}",lambda: _segment_events(info, segment, shots),report,ledger); all_events.extend(events)
+            record["events"] = events; record["shots"] = [x["shot_id"] for x in shots if x["shot_id"] in {y for e in events for y in e["source_shot_ids"]}]
+            write_json(store_path, store); ledger.log("VISUAL_EVENTS_COMPLETE", mode="production", segment_id=sid, events=len(events))
+            report(f"[movie-broll] segment {index}/{len(narrative_segments)}: shots={len(record['shots'])} events={len(events)}")
+            _summary(info, ledger, all_events, "RUNNING", stage="semantic", segments_total=len(narrative_segments), segments_complete=index-1, timings={"technical_shots_seconds":time.monotonic()-technical_started,"segment_visual_events_seconds":time.monotonic()-event_started}, technical_shot_count=len(shots))
+            report(f"[movie-broll] semantic: segment {index}/{len(narrative_segments)} events={len(events)}")
+            ledger.log("SEMANTIC_RUNNING", mode="production", segment_id=sid, events=len(events))
+            semantic=_bounded_operation(f"semantic segment {index}/{len(narrative_segments)}",lambda: semantic_validate(events,info["movie"],info["srt"],info["narrative"],info["run"] / "semantic_checkpoints",float(video["fps"]),sid,provider=provider,model=model,preserve_event_ids=True),report,ledger); semantic_reports.append(semantic)
+            if semantic.get("quota_exhausted") or semantic.get("status") == "PARTIAL_PROVIDER":
+                record["status"]="FAILED_RETRYABLE"; write_json(store_path,store); ledger.log("PRODUCTION_PARTIAL_PROVIDER",mode="production",segment_id=sid)
+                return {"status":"PARTIAL_PROVIDER","summary":_summary(info,ledger,all_events,"PARTIAL_PROVIDER",stage="semantic",segments_total=len(narrative_segments),segments_complete=index-1,technical_shot_count=len(shots)),"semantic":semantic}
+            apply_semantic_scarcity(events)
+            ledger.log("SEMANTIC_COMPLETE", mode="production", segment_id=sid, complete=semantic.get("complete", 0))
+            if any(x.get("editorial",{}).get("decision")=="KEEP" and x.get("editorial",{}).get("status")=="VALIDATED" for x in events): person_detector_preflight()
+            final=finalize_pilot(input_dir,sid,candidates=events,shots={x["shot_id"]:x for x in shots}); finals.append(final)
+            if final.get("completed", 0): ledger.log("ASSET_COMPLETE", mode="production", segment_id=sid, assets=final["completed"])
+            record.update(status="COMPLETE", completed_at=_utc(), finalization=final); write_json(store_path,store)
+            ledger.log("SEGMENT_COMPLETE",mode="production",segment_id=sid,events=len(events)); _summary(info,ledger,all_events,"RUNNING",final,stage="segment_complete",segments_total=len(narrative_segments),segments_complete=index,technical_shot_count=len(shots))
+        write_json(info["run"] / "visual_events.json", {"schema_version":"visual_events_v1","version":EVENT_VERSION,"events":all_events})
+        ledger.log("PRODUCTION_COMPLETE",mode="production")
+        return {"status":"COMPLETE","summary":_summary(info,ledger,all_events,"COMPLETE",stage="complete",segments_total=len(narrative_segments),segments_complete=len(narrative_segments),timings={"total_seconds":time.monotonic()-started},technical_shot_count=len(shots)),"semantic":semantic_reports,"finalization":finals}
+    except KeyboardInterrupt:
+        ledger.log("PRODUCTION_INTERRUPTED",mode="production")
+        return {"status":"PARTIAL","summary":_summary(info,ledger,all_events,"PARTIAL",stage="interrupted",segments_total=len(narrative_segments),segments_complete=sum(x.get("status")=="COMPLETE" for x in store["segments"].values()),technical_shot_count=len(shots))}
