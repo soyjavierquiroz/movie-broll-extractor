@@ -137,6 +137,15 @@ def _segment_events(info: dict[str, Any], segment: dict[str, Any], shots: list[d
     return events
 
 
+def _response_validation_retries(ledger: ProcessingLedger, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Only schema/content failures receive the existing second same-event try."""
+    selected=[]
+    for event in events:
+        stage=ledger.data.get("events",{}).get(event["visual_event_id"],{}).get("stages",{}).get("semantic",{})
+        if stage.get("status")=="FAILED_RETRYABLE" and stage.get("failure_kind")=="provider_response_validation": selected.append(event)
+    return selected
+
+
 def _invalidate_source_media(run: Path, old_sha: str | None, current_sha: str) -> None:
     """Retire only source-pixel artifacts; Narrative Map deliberately survives."""
     if old_sha == current_sha:
@@ -225,9 +234,14 @@ def process(input_dir: Path, provider: Any = None, model: str = "gemini-3.6-flas
             record["status"] = "RUNNING"; write_json(store_path, store)
             ledger.log("SEGMENT_RUNNING", mode="production", segment_id=sid, segment_index=index, segments_total=len(narrative_segments))
             report(f"[movie-broll] building Visual Events: segment {index}/{len(narrative_segments)}")
-            event_started=time.monotonic(); events=_bounded_operation(f"visual-events segment {index}/{len(narrative_segments)}",lambda: _segment_events(info, segment, shots),report,ledger); all_events.extend(events)
-            record["events"] = events; record["shots"] = [x["shot_id"] for x in shots if x["shot_id"] in {y for e in events for y in e["source_shot_ids"]}]
-            write_json(store_path, store); ledger.log("VISUAL_EVENTS_COMPLETE", mode="production", segment_id=sid, events=len(events))
+            event_started=time.monotonic()
+            if record.get("events"):
+                events=record["events"]; ledger.log("VISUAL_EVENTS_REUSED", mode="production", segment_id=sid, events=len(events))
+            else:
+                events=_bounded_operation(f"visual-events segment {index}/{len(narrative_segments)}",lambda: _segment_events(info, segment, shots),report,ledger)
+                record["events"] = events; record["shots"] = [x["shot_id"] for x in shots if x["shot_id"] in {y for e in events for y in e["source_shot_ids"]}]
+                write_json(store_path, store); ledger.log("VISUAL_EVENTS_COMPLETE", mode="production", segment_id=sid, events=len(events))
+            all_events.extend(events)
             report(f"[movie-broll] segment {index}/{len(narrative_segments)}: shots={len(record['shots'])} events={len(events)}")
             _summary(info, ledger, all_events, "RUNNING", stage="semantic", segments_total=len(narrative_segments), segments_complete=index-1, timings={"technical_shots_seconds":time.monotonic()-technical_started,"segment_visual_events_seconds":time.monotonic()-event_started}, technical_shot_count=len(shots))
             report(f"[movie-broll] semantic: segment {index}/{len(narrative_segments)} events={len(events)}")
@@ -236,6 +250,13 @@ def process(input_dir: Path, provider: Any = None, model: str = "gemini-3.6-flas
             if semantic.get("quota_exhausted") or semantic.get("status") == "PARTIAL_PROVIDER":
                 record["status"]="FAILED_RETRYABLE"; write_json(store_path,store); ledger.log("PRODUCTION_PARTIAL_PROVIDER",mode="production",segment_id=sid)
                 return {"status":"PARTIAL_PROVIDER","summary":_summary(info,ledger,all_events,"PARTIAL_PROVIDER",stage="semantic",segments_total=len(narrative_segments),segments_complete=index-1,technical_shot_count=len(shots)),"semantic":semantic}
+            retry_events=_response_validation_retries(ledger,events)
+            if retry_events:
+                ledger.log("SEMANTIC_RESPONSE_VALIDATION_RETRY",mode="production",segment_id=sid,events=len(retry_events))
+                semantic=_bounded_operation(f"semantic validation retry segment {index}/{len(narrative_segments)}",lambda: semantic_validate(retry_events,info["movie"],info["srt"],info["narrative"],info["run"] / "semantic_checkpoints",float(video["fps"]),sid,provider=provider,model=model,preserve_event_ids=True),report,ledger); semantic_reports.append(semantic)
+                if semantic.get("quota_exhausted") or semantic.get("status") == "PARTIAL_PROVIDER":
+                    record["status"]="FAILED_RETRYABLE"; write_json(store_path,store); ledger.log("PRODUCTION_PARTIAL_PROVIDER",mode="production",segment_id=sid)
+                    return {"status":"PARTIAL_PROVIDER","summary":_summary(info,ledger,all_events,"PARTIAL_PROVIDER",stage="semantic",segments_total=len(narrative_segments),segments_complete=index-1,technical_shot_count=len(shots)),"semantic":semantic}
             apply_semantic_scarcity(events)
             ledger.log("SEMANTIC_COMPLETE", mode="production", segment_id=sid, complete=semantic.get("complete", 0))
             if any(x.get("editorial",{}).get("decision")=="KEEP" and x.get("editorial",{}).get("status")=="VALIDATED" for x in events): person_detector_preflight()

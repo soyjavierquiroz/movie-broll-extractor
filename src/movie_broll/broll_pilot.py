@@ -299,7 +299,7 @@ def _legacy_provider_response_failure(stage:dict[str,Any])->bool:
 def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative:Path, checkpoint_dir:Path, fps:float, window_id:str, provider:SemanticProvider|None=None, model:str='gemini-3.6-flash', preserve_event_ids:bool=False)->dict[str,Any]:
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parents[2]/'.env'); key=os.getenv('GEMINI_API_KEY')
-    active=provider or (GeminiBrollSemanticProvider(key,model) if key else None); cues=parse_srt_file(srt).cues; segments=json.loads(narrative.read_text()).get('segments',[]); checkpoint_dir.mkdir(parents=True,exist_ok=True); usage={'prompt_tokens':0,'response_tokens':0,'thinking_tokens':0,'cached_tokens':0,'total_tokens':0}; reused=requests=0; quota=False; failed=0
+    active=provider or (GeminiBrollSemanticProvider(key,model) if key else None); cues=parse_srt_file(srt).cues; segments=json.loads(narrative.read_text()).get('segments',[]); checkpoint_dir.mkdir(parents=True,exist_ok=True); usage={'prompt_tokens':0,'response_tokens':0,'thinking_tokens':0,'cached_tokens':0,'total_tokens':0}; reused=requests=0; quota=False; unavailable=False; failed=0
     movie_id=movie.parent.name
     # Pilot checkpoints live under runs/<movie>/broll-pilot-v1/<window>; unit
     # callers may pass an isolated directory, for which its parent is the run.
@@ -327,7 +327,7 @@ def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative
             c['visual']=response['visual']; c['people']=response['visual']['people']; c['relationships']=response['relationships']; c['editorial']={**response['editorial'],'status':'VALIDATED'}; continue
         if semantic_stage.get('status') == 'FAILED_FINAL':
             c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':str(semantic_stage.get('error','semantic validation failed'))}; continue
-        elif quota:
+        elif quota or unavailable:
             c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':'quota exhausted; safe to resume'}; continue
         elif active is None:
             ledger.stage(c['visual_event_id'],'semantic','FAILED_RETRYABLE',error='GEMINI_API_KEY is not configured')
@@ -350,6 +350,7 @@ def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative
                     status='FAILED_RETRYABLE' if _retryable_error(error) else 'FAILED_FINAL'
                     ledger.stage(c['visual_event_id'],'semantic',status,error=str(error),candidate_fingerprint=event_fp)
                 if _quota_error(error): quota=True
+                elif not isinstance(error,ProviderResponseValidationError) and _retryable_error(error): unavailable=True
                 failed+=1
                 c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':str(error)}; continue
         c['visual']=response['visual']; c['people']=response['visual']['people']; c['relationships']=response['relationships']; c['editorial']={**response['editorial'],'status':'VALIDATED'}
@@ -358,13 +359,16 @@ def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative
     stages=[ledger.data['events'][eid]['stages']['semantic'].get('status') for eid in current_event_ids]
     complete=stages.count('COMPLETE'); retryable=stages.count('FAILED_RETRYABLE'); final=stages.count('FAILED_FINAL')
     pending=stages.count('PENDING')+stages.count('RUNNING'); remaining=len(stages)-complete
-    status='PARTIAL_QUOTA' if quota else ('PARTIAL_PROVIDER' if remaining else 'COMPLETE')
+    # A returned but invalid response is editorial/schema failure, not provider
+    # availability.  FAILED_FINAL response validation is terminal and permits
+    # the rest of the segment/movie to continue.
+    status='PARTIAL_QUOTA' if quota else ('PARTIAL_PROVIDER' if unavailable else 'COMPLETE')
     ledger.summary(status=status, window_id=window_id, visual_events_total=len(items), semantic_complete=complete,
                    semantic_pending=pending, semantic_failed=retryable+final,
                    semantic_failed_retryable=retryable, semantic_failed_final=final,
                    semantic_reused=reused, last_completed_event=next((c['visual_event_id'] for c in reversed(items) if c.get('editorial',{}).get('status')=='VALIDATED'),None),
                    remaining_count=remaining, remaining_work_definition='current window: PENDING + RUNNING + FAILED_RETRYABLE + FAILED_FINAL')
-    return {'provider':active.identifier if active else 'unavailable','model':model,'requests':requests,'reused':reused,'usage':usage,'status':status,'complete':complete,'pending':pending,'semantic_pending':pending,'semantic_failed_retryable':retryable,'semantic_failed_final':final,'remaining_count':remaining,'quota_exhausted':quota}
+    return {'provider':active.identifier if active else 'unavailable','model':model,'requests':requests,'reused':reused,'usage':usage,'status':status,'complete':complete,'pending':pending,'semantic_pending':pending,'semantic_failed_retryable':retryable,'semantic_failed_final':final,'remaining_count':remaining,'quota_exhausted':quota,'provider_unavailable':unavailable}
 
 def _words(value:Any)->set[str]:
     import re

@@ -224,9 +224,9 @@ def test_invalid_provider_focus_plan_has_two_bounded_resume_safe_attempts(monkey
             return SemanticResponse(_semantic(),{'prompt_tokens':0,'response_tokens':0,'thinking_tokens':0,'cached_tokens':0,'total_tokens':0})
     provider=Provider(); checkpoint=tmp_path/'broll-pilot-v1'/'SW_06'/'semantic_checkpoints'
     first=b.semantic_validate([_semantic_item(source_shot_id='SW_06_SHOT_0001')],movie,srt,narrative,checkpoint,24,'SW_06',provider)
-    assert first['semantic_pending'] == 0 and first['semantic_failed_retryable'] == 1 and first['semantic_failed_final'] == 0 and first['remaining_count'] == 1
+    assert first['status'] == 'COMPLETE' and first['semantic_pending'] == 0 and first['semantic_failed_retryable'] == 1 and first['semantic_failed_final'] == 0 and first['remaining_count'] == 1
     second=b.semantic_validate([_semantic_item(source_shot_id='SW_06_SHOT_0001')],movie,srt,narrative,checkpoint,24,'SW_06',provider)
-    assert provider.calls == 2 and second['semantic_failed_retryable'] == 0 and second['semantic_failed_final'] == 1
+    assert second['status'] == 'COMPLETE' and provider.calls == 2 and second['semantic_failed_retryable'] == 0 and second['semantic_failed_final'] == 1
     third=b.semantic_validate([_semantic_item(source_shot_id='SW_06_SHOT_0001')],movie,srt,narrative,checkpoint,24,'SW_06',provider)
     assert provider.calls == 2 and third['semantic_failed_final'] == 1
 
