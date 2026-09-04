@@ -3,7 +3,8 @@ from pathlib import Path
 import tomllib
 import cv2
 import numpy as np
-from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, _choose_target, _directive, _horizontal_reuse_provenance, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, export_horizontal_from_source, letterbox, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, stream_copy_export_command, thumbnail, unletterbox_bbox, validate_vertical
+from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, _asset_metadata, _choose_target, _directive, _existing_registered_package, _horizontal_reuse_provenance, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, export_horizontal_from_source, letterbox, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, stream_copy_export_command, thumbnail, unletterbox_bbox, validate_vertical
+from movie_broll.utils import sha256_file
 
 def event(position='left', people=None, interaction=None):
     return {'visual_event_id':'VE_000123','start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.,'source_shot_ids':['S1','S2'],
@@ -41,6 +42,40 @@ def test_true_vertical_render_validation_and_distinct_thumbnail_sources(tmp_path
     assert result['status']=='PASS' and (result['width'],result['height'])==(90,120) and not result['black_bars']
     hjpg,vjpg=tmp_path/'h.jpg',tmp_path/'v.jpg'; thumbnail(horizontal,hjpg); thumbnail(vertical,vjpg)
     assert hjpg.exists() and vjpg.exists() and cv2.imread(str(hjpg)).shape[1] != cv2.imread(str(vjpg)).shape[1]
+
+def test_asset_hub_metadata_v1_is_portable_self_contained_and_has_no_duplicate_identity(tmp_path):
+    h,v=tmp_path/'asset.mp4',tmp_path/'vasset.mp4'; synthetic(h); e=event(people=[{'presentation':'woman','frame_role':'primary','position':'right'},{'presentation':'man','frame_role':'primary','position':'left'}])
+    e['narrative']={'literal_transcription':False,'segment_ids':['NARR_1']}; plan=shot_crop_plan(e,{},160,120); render_vertical(h,v,e,plan)
+    ht,vt=tmp_path/'asset.jpg',tmp_path/'vasset.jpg'; htime=thumbnail(h,ht); vtime=thumbnail(v,vt)
+    horizontal={'status':'PASS','duration_seconds':1.,'width':160,'height':120,'fps':24.}; vertical={'status':'PASS','duration_seconds':1.,'width':90,'height':120,'fps':24.}
+    data=_asset_metadata('film','a'*64,'rc001','changeable-slug',e,h,v,ht,vt,htime,vtime,horizontal,vertical,'source_encode',1,plan,1,'fingerprint')
+    assert data['schema_version']=='asset_metadata_v1' and 'asset_metadata_v1' not in data
+    assert data['asset']=={'id':'rc001','slug':'changeable-slug','source_movie_id':'film'} and data['source_timeline']['visual_event_id']=='VE_000123'
+    assert data['source']['movie_sha256']=='a'*64 and '/opt/' not in json.dumps(data)
+    assert 'thumbnail' not in data and set(data['media']) == {'horizontal','vertical'}
+    for name,file,image in (('horizontal',h,ht),('vertical',v,vt)):
+        rendition=data['media'][name]; thumb=rendition['thumbnail']
+        assert rendition['file']==file.name and rendition['sha256']==sha256_file(file) and rendition['size_bytes']==file.stat().st_size and rendition['mime_type']=='video/mp4'
+        assert rendition['technical_validated'] is True and rendition['semantic_validated'] is True
+        assert thumb['file']==image.name and thumb['sha256']==sha256_file(image) and thumb['size_bytes']==image.stat().st_size and thumb['mime_type']=='image/jpeg'
+    assert data['media']['horizontal']['orientation']=='landscape' and data['media']['vertical']['orientation']=='portrait'
+    assert data['media']['vertical']['aspect_ratio']=='3:4' and data['analysis']['semantic_ready'] and data['analysis']['final_asset_semantics_validated']
+    assert data['editorial']['decision']=='KEEP' and data['narrative']['literal_transcription'] is False
+
+def test_rendition_override_is_deterministic_and_omitted_when_not_material(tmp_path):
+    h,v=tmp_path/'h.mp4',tmp_path/'v.mp4'; synthetic(h); synthetic(v); ht,vt=tmp_path/'h.jpg',tmp_path/'v.jpg'; thumbnail(h,ht); thumbnail(v,vt)
+    technical={'status':'PASS','duration_seconds':1.,'width':160,'height':120,'fps':24.}
+    e=event(people=[{'presentation':'woman','frame_role':'primary'},{'presentation':'man','frame_role':'primary'}])
+    focused=[{'focus_subject':'woman'}]
+    data=_asset_metadata('film','b'*64,'rc001','slug',e,h,v,ht,vt,0.,0.,technical,technical,'source_encode',1,focused,1,'x')
+    assert data['visual']['rendition_overrides']['vertical']['people']['composition']=='single_subject'
+    same=_asset_metadata('film','b'*64,'rc001','slug',e,h,v,ht,vt,0.,0.,technical,technical,'source_encode',1,[],1,'x')
+    assert same['visual']['rendition_overrides']=={}
+
+def test_complete_registered_package_skips_semantic_refresh_for_metadata_regeneration(tmp_path):
+    e=event(); aid,slug=asset_identity(tmp_path,'film',e); assets=tmp_path/'assets'; assets.mkdir()
+    for prefix,suffix in (('', '.mp4'),('v','.mp4'),('', '.jpg'),('v','.jpg'),('', '.json')): (assets/f'{prefix}{aid}-{slug}{suffix}').write_bytes(b'x')
+    assert _existing_registered_package(tmp_path,assets,e)
 
 def test_interaction_that_loses_opposite_subject_is_review(tmp_path):
     e=event(people=[{'position':'left'},{'position':'right'}],interaction=['conversation']); p=shot_crop_plan(e,{},160,120)
