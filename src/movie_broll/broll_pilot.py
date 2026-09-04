@@ -8,7 +8,7 @@ import numpy as np
 from .srt import parse_srt_file
 from .utils import write_json, sha256_file
 from .processing_ledger import ProcessingLedger, fingerprint
-from .broll_semantics import GeminiBrollSemanticProvider, PROMPT as SEMANTIC_PROMPT, SemanticProvider, FOCUS_SUBJECTS, INTERACTION_REQUIREMENTS, validate_response
+from .broll_semantics import (PROMPT as SEMANTIC_PROMPT, SemanticProvider, FOCUS_SUBJECTS, INTERACTION_REQUIREMENTS, validate_response, build_gemini_provider_from_env, classify_provider_error)
 
 PILOT_WINDOW="SW_02"; SAMPLE_FPS=3.0; KEEP=70; REVIEW=50
 SEMANTIC_SCHEMA_VERSION="broll_semantics_v6"; SEMANTIC_PROMPT_VERSION="broll_semantic_prompt_v6"
@@ -281,12 +281,10 @@ def shot_focus_compatible(response:dict[str,Any],candidate:dict[str,Any])->bool:
     return len(ids)==len(expected) and set(ids)==set(expected) and len(set(ids))==len(ids) and all(x.get('focus_subject') in FOCUS_SUBJECTS and x.get('interaction_requirement') in INTERACTION_REQUIREMENTS and (x.get('focus_subject') not in {'woman','man','multiple_people'} or x.get('focus_position') in {'left','center','right'}) for x in plan)
 
 def _quota_error(error: Exception) -> bool:
-    text=str(error).lower()
-    return ('429' in text or 'resource_exhausted' in text) and any(x in text for x in ('quota','exhaust','free tier','daily'))
+    return bool(classify_provider_error(error).get('quota_exhausted'))
 
 def _retryable_error(error: Exception) -> bool:
-    text=str(error).lower()
-    return any(x in text for x in ('429','timeout','temporar','connection','unavailable','503','500'))
+    return bool(classify_provider_error(error).get('retryable'))
 
 class ProviderResponseValidationError(ValueError):
     """The provider replied, but its structured content failed our contract."""
@@ -298,8 +296,8 @@ def _legacy_provider_response_failure(stage:dict[str,Any])->bool:
 
 def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative:Path, checkpoint_dir:Path, fps:float, window_id:str, provider:SemanticProvider|None=None, model:str='gemini-3.6-flash', preserve_event_ids:bool=False)->dict[str,Any]:
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).resolve().parents[2]/'.env'); key=os.getenv('GEMINI_API_KEY')
-    active=provider or (GeminiBrollSemanticProvider(key,model) if key else None); cues=parse_srt_file(srt).cues; segments=json.loads(narrative.read_text()).get('segments',[]); checkpoint_dir.mkdir(parents=True,exist_ok=True); usage={'prompt_tokens':0,'response_tokens':0,'thinking_tokens':0,'cached_tokens':0,'total_tokens':0}; reused=requests=0; quota=False; unavailable=False; failed=0
+    load_dotenv(Path(__file__).resolve().parents[2]/'.env')
+    active=provider or build_gemini_provider_from_env(model); cues=parse_srt_file(srt).cues; segments=json.loads(narrative.read_text()).get('segments',[]); checkpoint_dir.mkdir(parents=True,exist_ok=True); usage={'prompt_tokens':0,'response_tokens':0,'thinking_tokens':0,'cached_tokens':0,'total_tokens':0}; reused=requests=0; quota=False; unavailable=False; failed=0; failure=None
     movie_id=movie.parent.name
     # Pilot checkpoints live under runs/<movie>/broll-pilot-v1/<window>; unit
     # callers may pass an isolated directory, for which its parent is the run.
@@ -328,17 +326,30 @@ def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative
         if semantic_stage.get('status') == 'FAILED_FINAL':
             c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':str(semantic_stage.get('error','semantic validation failed'))}; continue
         elif quota or unavailable:
-            c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':'quota exhausted; safe to resume'}; continue
+            reason=(failure or {}).get('reason') or ('quota_exceeded' if quota else 'provider_unavailable')
+            c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':f'{reason}; safe to resume'}; continue
         elif active is None:
-            ledger.stage(c['visual_event_id'],'semantic','FAILED_RETRYABLE',error='GEMINI_API_KEY is not configured')
-            c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':'GEMINI_API_KEY is not configured'}; continue
+            message='Gemini provider configuration is not configured'
+            ledger.stage(c['visual_event_id'],'semantic','FAILED_RETRYABLE',error=message,failure_kind='provider_configuration')
+            c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':message}
+            unavailable=True
+            failure={'failure_stage':'semantic','failed_segment':window_id,'failed_event_id':c['visual_event_id'],'candidate_id':c['candidate_id'],'provider':'unavailable','model':model,'http_status':None,'reason':'provider_configuration','retryable':True,'retry_after_seconds':None,'checkpoint_saved':False,'ledger_saved':True,'resume_safe':True,'message':message}
+            continue
         else:
             try:
                 ledger.stage(c['visual_event_id'],'semantic','RUNNING',model=model,candidate_fingerprint=event_fp)
-                sheet=candidate_contact_sheet(movie,c,fps); response_obj=active.generate(SEMANTIC_PROMPT,{'window_id':window_id,'candidate_id':c['candidate_id'],'candidate_identity':{'window_id':window_id,'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive']},'source_shot_ids':c['source_shot_ids'],'technical_shots':c.get('technical_shots',[]),'narrative':c['narrative'],'srt_context':c['srt_context'],'instruction':'Images are visual authority. technical_shots and labelled image order map deterministically: representative_image_index is its zero-based position. Return exactly one shot_focus_plan directive for each listed technical shot; this is the same event request, never a request per shot.'},sheet); errors=validate_response(response_obj.data)
+                sheet=candidate_contact_sheet(movie,c,fps); response_obj=active.generate(SEMANTIC_PROMPT,{'window_id':window_id,'candidate_id':c['candidate_id'],'visual_event_id':c['visual_event_id'],'candidate_identity':{'window_id':window_id,'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive']},'source_shot_ids':c['source_shot_ids'],'technical_shots':c.get('technical_shots',[]),'narrative':c['narrative'],'srt_context':c['srt_context'],'instruction':'Images are visual authority. technical_shots and labelled image order map deterministically: representative_image_index is its zero-based position. Return exactly one shot_focus_plan directive for each listed technical shot; this is the same event request, never a request per shot.'},sheet); errors=validate_response(response_obj.data)
                 if not shot_focus_compatible(response_obj.data,c): errors.append('incomplete or mismatched shot focus plan')
                 if errors: raise ProviderResponseValidationError('; '.join(errors))
-                response=response_obj.data; identity={'window_id':window_id,'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive']}; write_json(cp,{**identity,'candidate_identity':identity,'visual_event_id':c['visual_event_id'],'candidate_fingerprint':event_fp,'model':model,'semantic_schema_version':SEMANTIC_SCHEMA_VERSION,'semantic_prompt_version':SEMANTIC_PROMPT_VERSION,'response':response,'usage':response_obj.usage}); ledger.stage(c['visual_event_id'],'semantic','COMPLETE',checkpoint=str(cp),model=model,candidate_fingerprint=event_fp); requests+=1
+                response=response_obj.data
+                identity={'window_id':window_id,'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive']}
+                resolved_provider=response_obj.provider or active.identifier
+                resolved_model=response_obj.model or model
+                provider_attempts=max(1,int(response_obj.attempts or 1))
+                provider_trace=list(response_obj.provider_trace)
+                write_json(cp,{**identity,'candidate_identity':identity,'visual_event_id':c['visual_event_id'],'candidate_fingerprint':event_fp,'provider':resolved_provider,'model':resolved_model,'provider_attempts':provider_attempts,'provider_trace':provider_trace,'semantic_schema_version':SEMANTIC_SCHEMA_VERSION,'semantic_prompt_version':SEMANTIC_PROMPT_VERSION,'response':response,'usage':response_obj.usage})
+                ledger.stage(c['visual_event_id'],'semantic','COMPLETE',checkpoint=str(cp),provider=resolved_provider,model=resolved_model,provider_attempts=provider_attempts,candidate_fingerprint=event_fp)
+                requests+=provider_attempts
                 for name,value in response_obj.usage.items():
                     if value is not None: usage[name]+=value
             except Exception as error:
@@ -347,10 +358,23 @@ def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative
                     status='FAILED_FINAL' if attempts >= MAX_PROVIDER_RESPONSE_ATTEMPTS else 'FAILED_RETRYABLE'
                     ledger.stage(c['visual_event_id'],'semantic',status,error=str(error),failure_kind='provider_response_validation',provider_response_attempts=attempts,candidate_fingerprint=event_fp)
                 else:
-                    status='FAILED_RETRYABLE' if _retryable_error(error) else 'FAILED_FINAL'
-                    ledger.stage(c['visual_event_id'],'semantic',status,error=str(error),candidate_fingerprint=event_fp)
-                if _quota_error(error): quota=True
-                elif not isinstance(error,ProviderResponseValidationError) and _retryable_error(error): unavailable=True
+                    detail=classify_provider_error(error)
+                    status='FAILED_RETRYABLE' if detail.get('retryable') else 'FAILED_FINAL'
+                    resolved_provider=detail.get('provider') or getattr(active,'identifier','unavailable')
+                    resolved_model=detail.get('model') or getattr(active,'model',model)
+                    fields={'error':str(error),'failure_kind':detail.get('reason'),'provider':resolved_provider,'model':resolved_model,'http_status':detail.get('http_status'),'retryable':bool(detail.get('retryable')),'retry_after_seconds':detail.get('retry_after_seconds'),'candidate_fingerprint':event_fp}
+                    providers_attempted=detail.get('providers_attempted')
+                    if providers_attempted: fields['providers_attempted']=providers_attempted
+                    ledger.stage(c['visual_event_id'],'semantic',status,**fields)
+
+                    attempts_used=detail.get('attempts')
+                    requests+=(int(attempts_used) if attempts_used is not None else 1)
+
+                    quota=bool(detail.get('quota_exhausted') or detail.get('reason')=='quota_exceeded')
+                    unavailable=bool(not quota and (detail.get('retryable') or detail.get('reason')=='auth_error'))
+
+                    if quota or unavailable:
+                        failure={'failure_stage':'semantic','failed_segment':window_id,'failed_event_id':c['visual_event_id'],'candidate_id':c['candidate_id'],'provider':resolved_provider,'model':resolved_model,'http_status':detail.get('http_status'),'reason':detail.get('reason'),'retryable':bool(detail.get('retryable')),'retry_after_seconds':detail.get('retry_after_seconds'),'providers_attempted':providers_attempted if providers_attempted is not None else [resolved_provider],'checkpoint_saved':False,'ledger_saved':True,'resume_safe':True,'message':str(error)}
                 failed+=1
                 c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':str(error)}; continue
         c['visual']=response['visual']; c['people']=response['visual']['people']; c['relationships']=response['relationships']; c['editorial']={**response['editorial'],'status':'VALIDATED'}
@@ -367,8 +391,8 @@ def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative
                    semantic_pending=pending, semantic_failed=retryable+final,
                    semantic_failed_retryable=retryable, semantic_failed_final=final,
                    semantic_reused=reused, last_completed_event=next((c['visual_event_id'] for c in reversed(items) if c.get('editorial',{}).get('status')=='VALIDATED'),None),
-                   remaining_count=remaining, remaining_work_definition='current window: PENDING + RUNNING + FAILED_RETRYABLE + FAILED_FINAL')
-    return {'provider':active.identifier if active else 'unavailable','model':model,'requests':requests,'reused':reused,'usage':usage,'status':status,'complete':complete,'pending':pending,'semantic_pending':pending,'semantic_failed_retryable':retryable,'semantic_failed_final':final,'remaining_count':remaining,'quota_exhausted':quota,'provider_unavailable':unavailable}
+                   remaining_count=remaining, remaining_work_definition='current window: PENDING + RUNNING + FAILED_RETRYABLE + FAILED_FINAL', failure=failure)
+    return {'provider':active.identifier if active else 'unavailable','model':model,'requests':requests,'reused':reused,'usage':usage,'status':status,'complete':complete,'pending':pending,'semantic_pending':pending,'semantic_failed_retryable':retryable,'semantic_failed_final':final,'remaining_count':remaining,'quota_exhausted':quota,'provider_unavailable':unavailable,'failure':failure}
 
 def _words(value:Any)->set[str]:
     import re

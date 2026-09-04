@@ -333,3 +333,123 @@ def test_quota_stops_later_events_and_resume_reuses_checkpoints(monkeypatch,tmp_
     report=b.semantic_validate(items,movie,srt,narrative,tmp_path/'broll-pilot-v1'/'SW_01'/'semantic_checkpoints',24,'SW_01',second)
     assert second.calls==['BRC_0003','BRC_0004','BRC_0005']
     assert report['reused']==2 and report['status']=='COMPLETE'
+
+
+
+def test_pool_provider_checkpoint_provenance_and_reuse(monkeypatch,tmp_path):
+    import json
+    import movie_broll.broll_pilot as b
+    from movie_broll.broll_semantics import SemanticResponse
+
+    movie,srt,narrative=_semantic_files(tmp_path)
+    monkeypatch.setattr(b,'candidate_contact_sheet',lambda *args:b'jpg')
+
+    class Provider:
+        identifier='gemini'
+        model='gemini-3.6-flash'
+
+        def __init__(self):
+            self.calls=0
+
+        def generate(self,*args):
+            self.calls+=1
+            data=_semantic()
+            data['visual']['shot_focus_plan'][0]['shot_id']=args[1]['source_shot_ids'][0]
+            return SemanticResponse(
+                data,
+                {'prompt_tokens':1,'response_tokens':1,'thinking_tokens':0,'cached_tokens':0,'total_tokens':2},
+                provider='gemini-primary-2',
+                model=self.model,
+                attempts=2,
+                provider_trace=(
+                    {'provider':'gemini-primary-1','status':429},
+                    {'provider':'gemini-primary-2','status':'COMPLETE'},
+                ),
+            )
+
+    provider=Provider()
+    checkpoint=tmp_path/'broll-pilot-v1'/'SW_06'/'semantic_checkpoints'
+    item=_semantic_item()
+
+    first=b.semantic_validate([item],movie,srt,narrative,checkpoint,24,'SW_06',provider)
+
+    assert first['status']=='COMPLETE'
+    assert provider.calls==1
+    assert first['requests']==2
+
+    data=json.loads((checkpoint/f"{item['candidate_id']}.json").read_text())
+
+    assert data['provider']=='gemini-primary-2'
+    assert data['model']=='gemini-3.6-flash'
+    assert data['provider_attempts']==2
+    assert len(data['provider_trace'])==2
+
+    rerun=_semantic_item()
+    second=b.semantic_validate([rerun],movie,srt,narrative,checkpoint,24,'SW_06',provider)
+
+    assert second['reused']==1
+    assert provider.calls==1
+
+
+def test_pool_exhaustion_returns_partial_quota_with_failure(monkeypatch,tmp_path):
+    import movie_broll.broll_pilot as b
+    from movie_broll.broll_semantics import GeminiProviderPool
+
+    movie,srt,narrative=_semantic_files(tmp_path)
+    monkeypatch.setattr(b,'candidate_contact_sheet',lambda *args:b'jpg')
+
+    class QuotaProvider:
+        model='gemini-3.6-flash'
+
+        def __init__(self,identifier):
+            self.identifier=identifier
+
+        def generate(self,*args):
+            raise RuntimeError(
+                'Error code: 429 '
+                'generate_content_free_tier_requests '
+                'quota exceeded. Please retry in: 17.25s'
+            )
+
+    pool=GeminiProviderPool(
+        [
+            QuotaProvider('gemini-primary-1'),
+            QuotaProvider('gemini-primary-2'),
+            QuotaProvider('gemini-primary-3'),
+        ],
+        QuotaProvider('gemini-backup'),
+    )
+
+    item=_semantic_item()
+
+    report=b.semantic_validate(
+        [item],
+        movie,
+        srt,
+        narrative,
+        tmp_path/'broll-pilot-v1'/'SW_06'/'semantic_checkpoints',
+        24,
+        'SW_06',
+        pool,
+    )
+
+    assert report['status']=='PARTIAL_QUOTA'
+    assert report['quota_exhausted'] is True
+    assert report['provider_unavailable'] is False
+    assert report['requests']==4
+
+    failure=report['failure']
+
+    assert failure['http_status']==429
+    assert failure['reason']=='quota_exceeded'
+    assert failure['retryable'] is True
+    assert failure['retry_after_seconds']==17.25
+    assert failure['resume_safe'] is True
+    assert failure['ledger_saved'] is True
+    assert failure['failed_event_id']==item['visual_event_id']
+    assert failure['providers_attempted']==[
+        'gemini-primary-1',
+        'gemini-primary-2',
+        'gemini-primary-3',
+        'gemini-backup',
+    ]

@@ -17,6 +17,7 @@ from typing import Any
 
 from .broll_pilot import (add_context, apply_semantic_scarcity, candidates,
                           semantic_validate, visual_signals)
+from .broll_semantics import build_gemini_provider_from_env
 from .finalization import finalize_pilot, person_detector_preflight, safe_cleanup
 from .inspect_source import inspect_movie
 from .processing_ledger import ProcessingLedger, fingerprint
@@ -180,7 +181,7 @@ def _summary(info: dict[str, Any], ledger: ProcessingLedger, events: list[dict[s
              "semantic": {"complete": sum(x.get("status") == "COMPLETE" for x in semantic),
                           "retryable": sum(x.get("status") == "FAILED_RETRYABLE" for x in semantic),
                           "failed": sum(x.get("status") == "FAILED_FINAL" for x in semantic),
-                          "remaining": sum(x.get("status") in {"PENDING", "STALE", "RUNNING"} for x in semantic)},
+                          "remaining": sum(x.get("status") in {"PENDING", "STALE", "RUNNING", "FAILED_RETRYABLE"} for x in semantic)},
              "editorial": editorial,
              "finalization": {"assets": (final or {}).get("completed", 0), "review": (final or {}).get("review", 0),
                               "failed": (final or {}).get("failed_final", 0)},
@@ -190,17 +191,137 @@ def _summary(info: dict[str, Any], ledger: ProcessingLedger, events: list[dict[s
     return value
 
 
+def _semantic_stop_status(semantic: dict[str, Any]) -> str | None:
+    """Preserve the semantic operational stop cause."""
+    status = semantic.get("status")
+
+    if status in {"PARTIAL_QUOTA", "PARTIAL_PROVIDER"}:
+        return status
+
+    if semantic.get("quota_exhausted"):
+        return "PARTIAL_QUOTA"
+
+    if semantic.get("provider_unavailable"):
+        return "PARTIAL_PROVIDER"
+
+    return None
+
+
+def _semantic_stop_result(
+    info: dict[str, Any],
+    ledger: ProcessingLedger,
+    events: list[dict[str, Any]],
+    record: dict[str, Any],
+    store_path: Path,
+    store: dict[str, Any],
+    semantic: dict[str, Any],
+    segment_id: str,
+    segment_index: int,
+    segments_total: int,
+    shots: list[dict[str, Any]],
+    report: Any,
+) -> dict[str, Any] | None:
+    status = _semantic_stop_status(semantic)
+
+    if status is None:
+        return None
+
+    failure = dict(semantic.get("failure") or {})
+
+    failure.update(
+        failure_stage="semantic",
+        failed_segment=segment_id,
+        segment_index=segment_index,
+        segments_total=segments_total,
+        resume_safe=True,
+    )
+
+    if not failure.get("reason"):
+        failure["reason"] = (
+            "quota_exceeded"
+            if status == "PARTIAL_QUOTA"
+            else "provider_unavailable"
+        )
+
+    record["status"] = (
+        "FAILED_FINAL"
+        if failure.get("retryable") is False
+        else "FAILED_RETRYABLE"
+    )
+    record["failure"] = failure
+
+    write_json(store_path, store)
+
+    ledger.log(
+        f"PRODUCTION_{status}",
+        mode="production",
+        segment_id=segment_id,
+        segment_index=segment_index,
+        segments_total=segments_total,
+        failure=failure,
+    )
+
+    report(
+        "[provider-error] "
+        f"stage=semantic "
+        f"segment={segment_index}/{segments_total} "
+        f"event={failure.get('failed_event_id')} "
+        f"provider={failure.get('provider')} "
+        f"model={failure.get('model')} "
+        f"http_status={failure.get('http_status')} "
+        f"reason={failure.get('reason')} "
+        f"retryable={failure.get('retryable')} "
+        f"retry_after_seconds={failure.get('retry_after_seconds')} "
+        f"checkpoint_saved={failure.get('checkpoint_saved')} "
+        "resume_safe=true"
+    )
+
+    summary = _summary(
+        info,
+        ledger,
+        events,
+        status,
+        stage="semantic",
+        segments_total=segments_total,
+        segments_complete=segment_index - 1,
+        technical_shot_count=len(shots),
+    )
+
+    summary["failure"] = failure
+    ledger.summary(**summary)
+
+    return {
+        "status": status,
+        "summary": summary,
+        "semantic": semantic,
+        "failure": failure,
+    }
+
+
 def process(input_dir: Path, provider: Any = None, model: str = "gemini-3.6-flash", reporter: Any = None) -> dict[str, Any]:
     report = reporter or (lambda message: None)
     started = time.monotonic()
     info = preflight(input_dir)
-    # A supplied test/provider implementation is already configured.  The CLI
-    # path must fail before video traversal when Gemini credentials are absent.
-    if provider is None:
+    # One provider/pool instance for the complete production invocation.
+    # Round-robin cursor and cooldown state survive across segments.
+    active_provider = provider
+
+    if active_provider is None:
         from dotenv import load_dotenv
+
         load_dotenv(_root(input_dir) / ".env")
-        if not os.getenv("GEMINI_API_KEY"):
-            raise RuntimeError("provider configuration missing: GEMINI_API_KEY")
+
+        active_provider = build_gemini_provider_from_env(
+            model,
+            reporter=report,
+        )
+
+        if active_provider is None:
+            raise RuntimeError(
+                "provider configuration missing: "
+                "GEMINI_API_KEY_1/2/3, GEMINI_API_KEY_BACKUP, "
+                "or legacy GEMINI_API_KEY"
+            )
     report(f"[movie-broll] movie: {input_dir.name}")
     report(f"[movie-broll] source: {info['movie_sha256'][:12]}...")
     video = info["metadata"]["video"]
@@ -231,7 +352,7 @@ def process(input_dir: Path, provider: Any = None, model: str = "gemini-3.6-flas
             sid = segment["segment_id"]; record = store["segments"].setdefault(sid, {"status": "PENDING", "segment": segment})
             if record.get("status") == "COMPLETE":
                 all_events.extend(record.get("events", [])); continue
-            record["status"] = "RUNNING"; write_json(store_path, store)
+            record["status"] = "RUNNING"; record.pop("failure", None); write_json(store_path, store)
             ledger.log("SEGMENT_RUNNING", mode="production", segment_id=sid, segment_index=index, segments_total=len(narrative_segments))
             report(f"[movie-broll] building Visual Events: segment {index}/{len(narrative_segments)}")
             event_started=time.monotonic()
@@ -246,17 +367,17 @@ def process(input_dir: Path, provider: Any = None, model: str = "gemini-3.6-flas
             _summary(info, ledger, all_events, "RUNNING", stage="semantic", segments_total=len(narrative_segments), segments_complete=index-1, timings={"technical_shots_seconds":time.monotonic()-technical_started,"segment_visual_events_seconds":time.monotonic()-event_started}, technical_shot_count=len(shots))
             report(f"[movie-broll] semantic: segment {index}/{len(narrative_segments)} events={len(events)}")
             ledger.log("SEMANTIC_RUNNING", mode="production", segment_id=sid, events=len(events))
-            semantic=_bounded_operation(f"semantic segment {index}/{len(narrative_segments)}",lambda: semantic_validate(events,info["movie"],info["srt"],info["narrative"],info["run"] / "semantic_checkpoints",float(video["fps"]),sid,provider=provider,model=model,preserve_event_ids=True),report,ledger); semantic_reports.append(semantic)
-            if semantic.get("quota_exhausted") or semantic.get("status") == "PARTIAL_PROVIDER":
-                record["status"]="FAILED_RETRYABLE"; write_json(store_path,store); ledger.log("PRODUCTION_PARTIAL_PROVIDER",mode="production",segment_id=sid)
-                return {"status":"PARTIAL_PROVIDER","summary":_summary(info,ledger,all_events,"PARTIAL_PROVIDER",stage="semantic",segments_total=len(narrative_segments),segments_complete=index-1,technical_shot_count=len(shots)),"semantic":semantic}
+            semantic=_bounded_operation(f"semantic segment {index}/{len(narrative_segments)}",lambda: semantic_validate(events,info["movie"],info["srt"],info["narrative"],info["run"] / "semantic_checkpoints",float(video["fps"]),sid,provider=active_provider,model=model,preserve_event_ids=True),report,ledger); semantic_reports.append(semantic)
+            stop_result=_semantic_stop_result(info,ledger,all_events,record,store_path,store,semantic,sid,index,len(narrative_segments),shots,report)
+            if stop_result is not None:
+                return stop_result
             retry_events=_response_validation_retries(ledger,events)
             if retry_events:
                 ledger.log("SEMANTIC_RESPONSE_VALIDATION_RETRY",mode="production",segment_id=sid,events=len(retry_events))
-                semantic=_bounded_operation(f"semantic validation retry segment {index}/{len(narrative_segments)}",lambda: semantic_validate(retry_events,info["movie"],info["srt"],info["narrative"],info["run"] / "semantic_checkpoints",float(video["fps"]),sid,provider=provider,model=model,preserve_event_ids=True),report,ledger); semantic_reports.append(semantic)
-                if semantic.get("quota_exhausted") or semantic.get("status") == "PARTIAL_PROVIDER":
-                    record["status"]="FAILED_RETRYABLE"; write_json(store_path,store); ledger.log("PRODUCTION_PARTIAL_PROVIDER",mode="production",segment_id=sid)
-                    return {"status":"PARTIAL_PROVIDER","summary":_summary(info,ledger,all_events,"PARTIAL_PROVIDER",stage="semantic",segments_total=len(narrative_segments),segments_complete=index-1,technical_shot_count=len(shots)),"semantic":semantic}
+                semantic=_bounded_operation(f"semantic validation retry segment {index}/{len(narrative_segments)}",lambda: semantic_validate(retry_events,info["movie"],info["srt"],info["narrative"],info["run"] / "semantic_checkpoints",float(video["fps"]),sid,provider=active_provider,model=model,preserve_event_ids=True),report,ledger); semantic_reports.append(semantic)
+                stop_result=_semantic_stop_result(info,ledger,all_events,record,store_path,store,semantic,sid,index,len(narrative_segments),shots,report)
+                if stop_result is not None:
+                    return stop_result
             apply_semantic_scarcity(events)
             ledger.log("SEMANTIC_COMPLETE", mode="production", segment_id=sid, complete=semantic.get("complete", 0))
             if any(x.get("editorial",{}).get("decision")=="KEEP" and x.get("editorial",{}).get("status")=="VALIDATED" for x in events): person_detector_preflight()

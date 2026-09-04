@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import base64
 import json
+import os
+import re
+import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -53,6 +56,10 @@ PROMPT = """You validate a movie B-roll candidate. The images are the only autho
 class SemanticResponse:
     data: dict[str, Any]
     usage: dict[str, int | None]
+    provider: str | None = None
+    model: str | None = None
+    attempts: int = 1
+    provider_trace: tuple[dict[str, Any], ...] = ()
 
 class SemanticProvider(Protocol):
     identifier: str
@@ -61,9 +68,9 @@ class SemanticProvider(Protocol):
 
 class GeminiBrollSemanticProvider:
     identifier = "gemini"
-    def __init__(self, api_key: str, model: str = "gemini-3.6-flash") -> None:
+    def __init__(self, api_key: str, model: str = "gemini-3.6-flash", identifier: str = "gemini") -> None:
         from google import genai
-        self.client = genai.Client(api_key=api_key); self.model = model
+        self.client = genai.Client(api_key=api_key); self.model = model; self.identifier = identifier
 
     def generate(self, prompt: str, context: dict[str, Any], jpeg: bytes) -> SemanticResponse:
         # google-genai 2.22.0 Interactions accepts image content as base64 data.
@@ -76,6 +83,429 @@ class GeminiBrollSemanticProvider:
                 if isinstance(item, int): return item
             return None
         return SemanticResponse(data, {"prompt_tokens": value("total_input_tokens"), "response_tokens": value("total_output_tokens"), "thinking_tokens": value("total_thought_tokens"), "cached_tokens": value("total_cached_tokens"), "total_tokens": value("total_tokens")})
+
+
+class GeminiProviderPoolError(RuntimeError):
+    """All eligible Gemini providers failed for one semantic request."""
+
+    def __init__(self, failures: list[dict[str, Any]], model: str) -> None:
+        self.failures = [dict(x) for x in failures]
+        self.model = model
+        self.attempts = sum(
+            1
+            for x in self.failures
+            if x.get("attempted", True)
+        )
+        self.providers_attempted = [
+            x.get("provider")
+            for x in self.failures
+            if x.get("provider") and x.get("attempted", True)
+        ]
+
+        quota_only = bool(self.failures) and all(
+            x.get("reason") == "quota_exceeded"
+            for x in self.failures
+        )
+
+        self.quota_exhausted = quota_only
+        self.reason = "quota_exceeded" if quota_only else "provider_unavailable"
+        self.retryable = any(bool(x.get("retryable")) for x in self.failures)
+
+        retry_values = [
+            float(x["retry_after_seconds"])
+            for x in self.failures
+            if x.get("retry_after_seconds") is not None
+        ]
+        self.retry_after_seconds = min(retry_values) if retry_values else None
+        self.http_status = 429 if quota_only else next(
+            (
+                x.get("http_status")
+                for x in reversed(self.failures)
+                if x.get("http_status") is not None
+            ),
+            None,
+        )
+
+        super().__init__(
+            "Gemini provider pool exhausted: "
+            + "; ".join(
+                f"{x.get('provider')}={x.get('reason')}"
+                for x in self.failures
+            )
+        )
+
+
+def _provider_http_status(error: Exception) -> int | None:
+    for attr in ("status_code", "code"):
+        value = getattr(error, attr, None)
+        if isinstance(value, int) and 100 <= value <= 599:
+            return value
+
+    text = str(error)
+
+    match = re.search(
+        r"(?:error code|status(?: code)?)\s*[:=]?\s*(\d{3})",
+        text,
+        re.I,
+    )
+    if match:
+        return int(match.group(1))
+
+    for code in (429, 401, 403, 500, 502, 503, 504):
+        if re.search(rf"(?<!\d){code}(?!\d)", text):
+            return code
+
+    return None
+
+
+def _provider_retry_after(error: Exception) -> float | None:
+    for attr in ("retry_after_seconds", "retry_after"):
+        value = getattr(error, attr, None)
+        if isinstance(value, (int, float)) and value >= 0:
+            return float(value)
+
+    match = re.search(
+        r"retry(?:\s+after|\s+in)?\s*:?\s*"
+        r"([0-9]+(?:\.[0-9]+)?)\s*s",
+        str(error),
+        re.I,
+    )
+    return float(match.group(1)) if match else None
+
+
+def classify_provider_error(error: Exception) -> dict[str, Any]:
+    if isinstance(error, GeminiProviderPoolError):
+        failures = error.failures
+        return {
+            "provider": (
+                failures[-1].get("provider")
+                if failures
+                else "gemini"
+            ),
+            "model": error.model,
+            "http_status": error.http_status,
+            "reason": error.reason,
+            "retryable": error.retryable,
+            "retry_after_seconds": error.retry_after_seconds,
+            "quota_exhausted": error.quota_exhausted,
+            "providers_attempted": error.providers_attempted,
+            "attempts": error.attempts,
+        }
+
+    text = str(error).lower()
+    status = _provider_http_status(error)
+    retry_after = _provider_retry_after(error)
+
+    quota = (
+        status == 429 or "resource_exhausted" in text
+    ) and any(
+        token in text
+        for token in ("quota", "exhaust", "free tier", "daily")
+    )
+
+    if quota:
+        reason = "quota_exceeded"
+        retryable = True
+    elif status == 429:
+        reason = "rate_limited"
+        retryable = True
+    elif "timeout" in text or "timed out" in text:
+        reason = "timeout"
+        retryable = True
+    elif (
+        "connection" in text
+        or "temporar" in text
+        or "unavailable" in text
+        or (status is not None and 500 <= status <= 599)
+    ):
+        reason = "provider_unavailable"
+        retryable = True
+    elif status in {401, 403}:
+        reason = "auth_error"
+        retryable = False
+    else:
+        reason = "provider_error"
+        retryable = False
+
+    return {
+        "http_status": status,
+        "reason": reason,
+        "retryable": retryable,
+        "retry_after_seconds": retry_after,
+        "quota_exhausted": quota,
+    }
+
+
+class GeminiProviderPool:
+    """
+    Round-robin primaries with independent cooldown and optional backup.
+
+    identifier intentionally remains "gemini" so adding the pool does not
+    alter existing semantic fingerprint identity.
+    """
+
+    identifier = "gemini"
+
+    def __init__(
+        self,
+        primaries: list[SemanticProvider],
+        backup: SemanticProvider | None = None,
+        *,
+        reporter: Any = None,
+        clock: Any = None,
+        default_cooldown_seconds: float = 30.0,
+    ) -> None:
+        if not primaries and backup is None:
+            raise ValueError("GeminiProviderPool requires at least one provider")
+
+        self.primaries = [
+            {
+                "provider": provider,
+                "cooldown_until": 0.0,
+                "last_failure": None,
+            }
+            for provider in primaries
+        ]
+        self.backup = (
+            {
+                "provider": backup,
+                "cooldown_until": 0.0,
+                "last_failure": None,
+            }
+            if backup is not None
+            else None
+        )
+
+        first = primaries[0] if primaries else backup
+        self.model = first.model
+        self.reporter = reporter
+        self.clock = clock or time.monotonic
+        self.default_cooldown_seconds = float(default_cooldown_seconds)
+        self.cursor = 0
+
+    def _log(self, message: str) -> None:
+        if self.reporter is not None:
+            self.reporter(message)
+
+    def _try_member(
+        self,
+        member: dict[str, Any],
+        prompt: str,
+        context: dict[str, Any],
+        jpeg: bytes,
+        attempt: int,
+    ) -> tuple[SemanticResponse | None, dict[str, Any]]:
+        provider = member["provider"]
+
+        try:
+            response = provider.generate(prompt, context, jpeg)
+
+            trace = {
+                "provider": provider.identifier,
+                "model": provider.model,
+                "attempt": attempt,
+                "status": "COMPLETE",
+            }
+
+            self._log(
+                "[gemini-pool] "
+                f"event={context.get('visual_event_id') or context.get('candidate_id', '?')} "
+                f"provider={provider.identifier} "
+                f"attempt={attempt} status=COMPLETE"
+            )
+
+            return response, trace
+
+        except Exception as error:
+            detail = classify_provider_error(error)
+            detail.update(
+                provider=provider.identifier,
+                model=provider.model,
+                attempt=attempt,
+                attempted=True,
+            )
+
+            if not detail["retryable"]:
+                raise
+
+            cooldown = detail["retry_after_seconds"]
+            if cooldown is None:
+                cooldown = self.default_cooldown_seconds
+
+            member["cooldown_until"] = self.clock() + max(0.0, float(cooldown))
+            member["last_failure"] = dict(detail)
+
+            self._log(
+                "[gemini-pool] "
+                f"event={context.get('visual_event_id') or context.get('candidate_id', '?')} "
+                f"provider={provider.identifier} "
+                f"attempt={attempt} "
+                f"status={detail.get('http_status') or detail['reason']} "
+                f"reason={detail['reason']} "
+                f"retry_after={detail.get('retry_after_seconds')} "
+                "action=COOLDOWN"
+            )
+
+            return None, detail
+
+    def generate(
+        self,
+        prompt: str,
+        context: dict[str, Any],
+        jpeg: bytes,
+    ) -> SemanticResponse:
+        trace: list[dict[str, Any]] = []
+        failures: list[dict[str, Any]] = []
+
+        count = len(self.primaries)
+        now = self.clock()
+
+        if count:
+            order = [
+                (self.cursor + offset) % count
+                for offset in range(count)
+            ]
+
+            for index in order:
+                member = self.primaries[index]
+
+                if member["cooldown_until"] > now:
+                    previous = member.get("last_failure")
+                    if previous:
+                        current = dict(previous)
+                        current["attempted"] = False
+                        current["retry_after_seconds"] = max(
+                            0.0,
+                            member["cooldown_until"] - now,
+                        )
+                        failures.append(current)
+                    continue
+
+                # Next request starts after this provider.
+                self.cursor = (index + 1) % count
+
+                response, detail = self._try_member(
+                    member,
+                    prompt,
+                    context,
+                    jpeg,
+                    len(trace) + 1,
+                )
+
+                trace.append(detail)
+
+                if response is not None:
+                    return SemanticResponse(
+                        response.data,
+                        response.usage,
+                        provider=response.provider or member["provider"].identifier,
+                        model=response.model or member["provider"].model,
+                        attempts=len(trace),
+                        provider_trace=tuple(trace),
+                    )
+
+                failures.append(detail)
+
+        if self.backup is not None:
+            member = self.backup
+            now = self.clock()
+
+            if member["cooldown_until"] <= now:
+                response, detail = self._try_member(
+                    member,
+                    prompt,
+                    context,
+                    jpeg,
+                    len(trace) + 1,
+                )
+
+                trace.append(detail)
+
+                if response is not None:
+                    return SemanticResponse(
+                        response.data,
+                        response.usage,
+                        provider=response.provider or member["provider"].identifier,
+                        model=response.model or member["provider"].model,
+                        attempts=len(trace),
+                        provider_trace=tuple(trace),
+                    )
+
+                failures.append(detail)
+            else:
+                previous = member.get("last_failure")
+                if previous:
+                    current = dict(previous)
+                    current["attempted"] = False
+                    current["retry_after_seconds"] = max(
+                        0.0,
+                        member["cooldown_until"] - now,
+                    )
+                    failures.append(current)
+
+        raise GeminiProviderPoolError(failures, self.model)
+
+
+def build_gemini_provider_from_env(
+    model: str = "gemini-3.6-flash",
+    *,
+    reporter: Any = None,
+    environ: dict[str, str] | None = None,
+) -> SemanticProvider | None:
+    env = os.environ if environ is None else environ
+
+    primary_specs = [
+        (f"gemini-primary-{index}", env.get(f"GEMINI_API_KEY_{index}"))
+        for index in (1, 2, 3)
+    ]
+    primary_specs = [
+        (name, key)
+        for name, key in primary_specs
+        if key
+    ]
+
+    backup_key = env.get("GEMINI_API_KEY_BACKUP")
+    legacy_key = env.get("GEMINI_API_KEY")
+
+    # Exact backward compatibility with the old configuration.
+    if not primary_specs and not backup_key:
+        return (
+            GeminiBrollSemanticProvider(legacy_key, model)
+            if legacy_key
+            else None
+        )
+
+    # If a backup is configured but numbered primaries are not,
+    # the legacy key can remain the primary.
+    if not primary_specs and legacy_key:
+        primary_specs = [
+            ("gemini-primary-1", legacy_key)
+        ]
+
+    primaries = [
+        GeminiBrollSemanticProvider(
+            key,
+            model,
+            identifier=name,
+        )
+        for name, key in primary_specs
+    ]
+
+    backup = (
+        GeminiBrollSemanticProvider(
+            backup_key,
+            model,
+            identifier="gemini-backup",
+        )
+        if backup_key
+        else None
+    )
+
+    return GeminiProviderPool(
+        primaries,
+        backup,
+        reporter=reporter,
+    )
 
 def validate_response(data: dict[str, Any]) -> list[str]:
     try: visual, editorial = data["visual"], data["editorial"]
