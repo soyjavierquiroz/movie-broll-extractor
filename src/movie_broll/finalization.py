@@ -11,7 +11,7 @@ from .utils import sha256_file, write_json
 
 MOVIE_CODES={"romper-el-circulo":"rc"}; SAFE_MARGIN=.08
 # This is deliberately persistent: it is part of every vertical-only reuse key.
-REFRAME_ALGORITHM_VERSION="3e.2.3.5-source-absolute-geometry-v3"
+REFRAME_ALGORITHM_VERSION="3e.2.3.7-frame-accurate-smooth-tracking-v4"
 SHOT_FOCUS_SCHEMA_VERSION="shot_focus_plan_v1"
 LOCAL_DETECTOR_VERSION="yolov5n-onnx-person+haar-face-v1"
 PERSON_CANDIDATE_CONFIDENCE=.05; PERSON_NMS_IOU=.45
@@ -169,12 +169,17 @@ def _choose_target(found:list[dict[str,Any]],direct:dict[str,Any],width:int)->di
 def _union(boxes:list[dict[str,float]])->dict[str,float]:
     left=min(x['x'] for x in boxes); top=min(x['y'] for x in boxes); right=max(x['x']+x['width'] for x in boxes); bottom=max(x['y']+x['height'] for x in boxes); return {'x':left,'y':top,'width':right-left,'height':bottom-top}
 def _anchor(box:dict[str,float],source:int,crop:int)->float: return max(0.,min(float(source-crop),box['x']+box['width']/2-crop/2))
-def _smooth(values:list[tuple[float,float]],crop:int)->list[dict[str,float]]:
+TRACKING_DEAD_ZONE_RATIO=.06; TRACKING_MAX_VELOCITY_RATIO_PER_SECOND=.08
+def _smooth(values:list[tuple[float,float]],crop:int,start:float|None=None,end:float|None=None)->list[dict[str,float]]:
     if not values:return []
     raw=np.array([x[1] for x in values])
-    if float(raw.max()-raw.min())<crop*.10:return [{'time':float(values[len(values)//2][0]),'x':float(np.median(raw))}]
-    output=[]; old=float(raw[0])
-    for t,x in values: old=max(old-crop*.18,min(old+crop*.18,float(x))); output.append({'time':float(t),'x':old})
+    if float(raw.max()-raw.min())<crop*TRACKING_DEAD_ZONE_RATIO:return [{'time':float(start if start is not None else values[0][0]),'x':float(np.median(raw))}]
+    output=[]; old=float(raw[0]); previous=float(values[0][0]); output.append({'time':float(start if start is not None else previous),'x':old})
+    for t,x in values[1:]:
+        delta=float(x)-old; limit=crop*TRACKING_MAX_VELOCITY_RATIO_PER_SECOND*max(0.,float(t)-previous)
+        if abs(delta)<crop*TRACKING_DEAD_ZONE_RATIO: x=old
+        old=max(old-limit,min(old+limit,float(x))); output.append({'time':float(t),'x':old}); previous=float(t)
+    if end is not None and end>previous: output.append({'time':float(end),'x':old})
     return output
 def build_shot_crop_plan(source_video:Path,event:dict[str,Any],shots:dict[str,dict[str,Any]],width:int,height:int,detector:Callable[[np.ndarray],list[dict[str,Any]]]=detect_people,strategy:str='subject_focus',sample_count:int=5)->list[dict[str,Any]]:
     """Build geometry from source_movie on source_absolute timeline, never event clips."""
@@ -197,15 +202,16 @@ def build_shot_crop_plan(source_video:Path,event:dict[str,Any],shots:dict[str,di
         focus=_union(focus_boxes) if focus_boxes else None; preserve=direct['interaction_requirement']=='simultaneous' or bool(direct.get('required_secondary_subjects',[])); composition=[focus] if focus else []
         if (preserve or strategy=='interaction_aware') and all_boxes: composition=[_union(all_boxes)]
         composition+=action; required=_union(composition) if composition else focus; impossible=bool(required and required['width']>crop*(1-2*SAFE_MARGIN) and (preserve or action))
-        if required and required['width']<=crop*(1-2*SAFE_MARGIN): anchors=_smooth([(t,_anchor(required,width,crop)) for t,_ in samples] or [(start,_anchor(required,width,crop))],crop)
-        elif samples: anchors=_smooth(samples,crop)
+        if required and required['width']<=crop*(1-2*SAFE_MARGIN): anchors=_smooth([(t,_anchor(required,width,crop)) for t,_ in samples] or [(start,_anchor(required,width,crop))],crop,start,end)
+        elif samples: anchors=_smooth(samples,crop,start,end)
         else:
             pos=str(shot.get('primary_subject_position',event.get('visual',{}).get('primary_subject_position','center'))).lower(); anchors=[{'time':start,'x':float(crop_x(width,height,pos))}]
         required_person=direct['focus_subject'] in {'woman','man','multiple_people'}
         unresolved=required_person and focus is None
         person_count=sum(1 for x in all_boxes if x.get('detector')=='yolo_person'); face_count=sum(1 for x in all_boxes if x.get('face_visible'))
         provenance={'person_detector':dict(_PERSON_RUNTIME or {'model_id':PERSON_MODEL_ID,'loaded':False,'inference_executed':False}),'face_detector':dict(_FACE_RUNTIME)}
-        plans.append({'shot_id':sid,'start_seconds':start,'end_seconds':end,'render_start_seconds':max(0.,start-float(event['start_seconds'])),'render_end_seconds':max(0.,min(float(event['end_seconds'])-float(event['start_seconds']),end-float(event['start_seconds']))),'sampling':{'media_role':'source_movie','timeline_basis':'source_absolute','requested_start':start,'requested_end':end,'sampled_frame_count':len(sampled)},'focus_subject':direct['focus_subject'],'focus_position':direct.get('focus_position','unclear'),'focus_role':direct['focus_role'],'focus_reason':direct.get('focus_reason','semantic shot focus plus local geometry'),'directive_available':direct['directive_available'],'required_person_focus':required_person,'interaction_requirement':direct['interaction_requirement'],'preserve_interaction':preserve,'required_action_region':regions,'focus_bbox':focus,'subject_bboxes':all_boxes,'person_detection_count':person_count,'face_detection_count':face_count,'geometry_resolved':bool(focus),'anchors':anchors,'x':float(np.median([x['x'] for x in anchors])),'crop_width':crop,'source_width':width,'strategy':strategy,'review_required':impossible or unresolved or not direct['directive_available'],'action_preserved':not action or bool(required),'detector_version':LOCAL_DETECTOR_VERSION if detector is detect_people and provenance['person_detector']['loaded'] else 'injected_test_detector','detector_provenance':provenance})
+        source_start_frame=int(shot.get('start_frame',round(start*24))); source_end_frame=int(shot.get('end_frame_exclusive',round(end*24))); event_start_frame=int(event.get('start_frame',round(float(event['start_seconds'])*24)))
+        plans.append({'shot_id':sid,'start_seconds':start,'end_seconds':end,'source_start_frame':source_start_frame,'source_end_frame_exclusive':source_end_frame,'render_start_frame':max(0,source_start_frame-event_start_frame),'render_end_frame_exclusive':max(0,source_end_frame-event_start_frame),'render_start_seconds':max(0.,start-float(event['start_seconds'])),'render_end_seconds':max(0.,min(float(event['end_seconds'])-float(event['start_seconds']),end-float(event['start_seconds']))),'sampling':{'media_role':'source_movie','timeline_basis':'source_absolute','requested_start':start,'requested_end':end,'sampled_frame_count':len(sampled)},'tracking':{'mode':'bounded_linear','anchor_count':len(anchors),'dead_zone_ratio':TRACKING_DEAD_ZONE_RATIO,'max_velocity_ratio_per_second':TRACKING_MAX_VELOCITY_RATIO_PER_SECOND,'interpolation':'linear'},'focus_subject':direct['focus_subject'],'focus_position':direct.get('focus_position','unclear'),'focus_role':direct['focus_role'],'focus_reason':direct.get('focus_reason','semantic shot focus plus local geometry'),'directive_available':direct['directive_available'],'required_person_focus':required_person,'interaction_requirement':direct['interaction_requirement'],'preserve_interaction':preserve,'required_action_region':regions,'focus_bbox':focus,'subject_bboxes':all_boxes,'person_detection_count':person_count,'face_detection_count':face_count,'geometry_resolved':bool(focus),'anchors':anchors,'x':float(np.median([x['x'] for x in anchors])),'crop_width':crop,'source_width':width,'strategy':strategy,'review_required':impossible or unresolved or not direct['directive_available'],'action_preserved':not action or bool(required),'detector_version':LOCAL_DETECTOR_VERSION if detector is detect_people and provenance['person_detector']['loaded'] else 'injected_test_detector','detector_provenance':provenance})
     return plans
 def shot_crop_plan(event:dict[str,Any],shots:dict[str,dict[str,Any]],width:int,height:int)->list[dict[str,Any]]:
     """No-video compatibility fallback; production calls build_shot_crop_plan."""
@@ -222,10 +228,13 @@ def _x_at(rule:dict[str,Any],time:float)->int:
     return round(anchors[-1]['x'])
 def render_vertical(horizontal:Path,output:Path,event:dict[str,Any],plan:list[dict[str,Any]])->None:
     cap=cv2.VideoCapture(str(horizontal)); fps=cap.get(cv2.CAP_PROP_FPS) or 24.; w,h=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); cw=min(w,round(h*3/4)); temp=output.with_suffix('.render.tmp.mp4'); writer=cv2.VideoWriter(str(temp),cv2.VideoWriter_fourcc(*'mp4v'),fps,(cw,h)); n=0
+    def matches(rule:dict[str,Any],index:int,relative:float)->bool:
+        if 'render_start_frame' in rule:return rule['render_start_frame']<=index<rule['render_end_frame_exclusive']
+        return rule.get('render_start_seconds',rule['start_seconds'])<=relative<rule.get('render_end_seconds',rule['end_seconds'])
     while True:
         ok,frame=cap.read()
         if not ok:break
-        relative=n/fps; rule=next((x for x in plan if x.get('render_start_seconds',x['start_seconds'])<=relative<x.get('render_end_seconds',x['end_seconds'])),plan[-1]); x=max(0,min(w-cw,_x_at(rule,float(event['start_seconds'])+relative))); writer.write(frame[:,x:x+cw]); n+=1
+        relative=n/fps; rule=next((x for x in plan if matches(x,n,relative)),plan[-1]); x=max(0,min(w-cw,_x_at(rule,float(event['start_seconds'])+relative))); writer.write(frame[:,x:x+cw]); n+=1
     writer.release(); cap.release()
     if not n:temp.unlink(missing_ok=True); raise RuntimeError('vertical reframe decoded no frames')
     try:subprocess.run(['ffmpeg','-y','-i',str(temp),'-map','0:v:0','-c:v','libx264','-crf','19','-an',str(output)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)

@@ -227,3 +227,11 @@ def test_geometry_uses_source_absolute_timeline_and_stores_relative_render_bound
     plan=f.build_shot_crop_plan(tmp_path/'movie.mp4',event,{'S1':{'start_seconds':2024.75,'end_seconds':2025.}},1720,720,detector=lambda _: [{'bbox':{'x':1200,'y':20,'width':100,'height':200},'confidence':.9}],sample_count=3)
     assert calls[0][1:]==(2024.75,2025.,3) and plan[0]['sampling']['timeline_basis']=='source_absolute'
     assert abs(plan[0]['render_start_seconds']-6.541667)<.001 and plan[0]['focus_position']=='right'
+
+def test_render_uses_integer_frame_boundary_on_first_new_shot_frame(tmp_path):
+    horizontal=tmp_path/'h.mp4'; vertical=tmp_path/'v.mp4'; synthetic(horizontal)
+    e={'start_seconds':100.,'end_seconds':101.}; plan=[
+        {'shot_id':'A','start_seconds':100.,'end_seconds':100.5,'render_start_frame':0,'render_end_frame_exclusive':12,'anchors':[{'time':100.,'x':0}],'x':0},
+        {'shot_id':'B','start_seconds':100.5,'end_seconds':101.,'render_start_frame':12,'render_end_frame_exclusive':24,'anchors':[{'time':100.5,'x':70}],'x':70}]
+    render_vertical(horizontal,vertical,e,plan); cap=cv2.VideoCapture(str(vertical)); cap.set(cv2.CAP_PROP_POS_FRAMES,12); ok,frame=cap.read(); cap.release()
+    assert ok and np.mean(frame[:,:,2]) > 20  # frame 12 uses B/right crop, never A's stale crop
