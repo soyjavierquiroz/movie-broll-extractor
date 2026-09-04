@@ -16,7 +16,10 @@ SHOT_FOCUS_SCHEMA_VERSION="shot_focus_plan_v1"
 LOCAL_DETECTOR_VERSION="yolov5n-onnx-person+haar-face-v1"
 PERSON_CANDIDATE_CONFIDENCE=.05; PERSON_NMS_IOU=.45
 PERSON_MODEL_ID="yolov5n"; PERSON_MODEL_NAME="yolov5n.onnx"; PERSON_MODEL_VERSION="yolov5-v7.0"; PERSON_WEIGHTS_NAME="yolov5n.pt"; PERSON_WEIGHTS_URL="https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5n.pt"; YOLOV5_EXPORT_REPOSITORY="https://github.com/ultralytics/yolov5.git"
-VERTICAL_VALIDATION_VERSION="3e.2.3.6-focus-core-validation-v2"
+VERTICAL_VALIDATION_VERSION="3e.2.3.9-close-up-person-focus-v1"
+# Kept in the render cache key for compatibility with 3E.2.3.8 pixels.  A
+# validator revision must cause revalidation, never a new vertical render.
+REFRAME_VALIDATION_COMPATIBILITY_VERSION="3e.2.3.6-focus-core-validation-v2"
 FOCUS_SUBJECTS={"woman","man","multiple_people","action_region","environment","unclear"}
 INTERACTION_REQUIREMENTS={"none","sequence","simultaneous","unclear"}
 _PERSON_RUNTIME:dict[str,Any]|None=None
@@ -256,17 +259,29 @@ def render_vertical(source_movie:Path,output:Path,event:dict[str,Any],plan:list[
     if not n or n!=total or result:
         output.unlink(missing_ok=True); tail='\n'.join(stderr.splitlines()[-8:])
         raise RuntimeError(f'vertical source crop encode failed after {n}/{total} frames: {tail or result}')
+def _person_focal_core(focus:dict[str,float], crop:float)->dict[str,float]:
+    """Protect the visible head region for oversized close-up person boxes.
+
+    YOLO's person box is intentionally broad.  Once it substantially exceeds a
+    3:4 crop, the old torso-centred core made peripheral body loss fatal.  The
+    face detector remains optional; this deterministic upper-centre estimate is
+    used only for those oversized boxes.
+    """
+    if focus['width'] >= crop*1.5:
+        return {'x':focus['x']+focus['width']*.40,'y':focus['y']+focus['height']*.04,'width':focus['width']*.22,'height':focus['height']*.30}
+    return {'x':focus['x']+focus['width']*.30,'y':focus['y']+focus['height']*.05,'width':focus['width']*.40,'height':focus['height']*.50}
+
 def _shot_validation(rule:dict[str,Any])->dict[str,Any]:
     crop=float(rule['crop_width']); x=float(rule['x']); margin=crop*SAFE_MARGIN; focus=rule.get('focus_bbox'); source=float(rule['source_width']); source_clip=False; introduced=False; empty=False; full_clipping=False; critical_clipping=False
     required_person=bool(rule.get('required_person_focus',rule.get('focus_subject') in {'woman','man','multiple_people'}))
     if focus:
         source_clip=focus['x']<=1 or focus['x']+focus['width']>=source-1; full_safe=focus['x']>=x+margin and focus['x']+focus['width']<=x+crop-margin; full_clipping=not full_safe
-        core={'x':focus['x']+focus['width']*.30,'y':focus['y']+focus['height']*.05,'width':focus['width']*.40,'height':focus['height']*.50}
+        core=_person_focal_core(focus,crop)
         # For simultaneous interaction the required union is itself critical;
         # ordinary person shots protect the head/upper-body focal core instead.
         critical=focus if rule.get('interaction_requirement')=='simultaneous' else core
         core_safe=critical['x']>=x+margin and critical['x']+critical['width']<=x+crop-margin
-        critical_clipping=not core_safe and not source_clip; introduced=critical_clipping if required_person else False; empty=critical_clipping and abs((critical['x']+critical['width']/2)-(x+crop/2))>crop*.20
+        critical_clipping=not core_safe and not source_clip; introduced=critical_clipping if required_person else False; empty=critical_clipping and required_person and abs((critical['x']+critical['width']/2)-(x+crop/2))>crop*.20
     action_ok=True
     for region in rule.get('required_action_region',[]) or []:
         b=_bbox(region); action_ok=action_ok and b['x']>=x and b['x']+b['width']<=x+crop
@@ -281,7 +296,7 @@ def validate_vertical(path:Path,expected:float,plan:list[dict[str,Any]],event:di
     cap=cv2.VideoCapture(str(path)); w,h=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); count=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); fps=cap.get(cv2.CAP_PROP_FPS) or 24.; frames=[]
     for i in {0,max(0,count//2),max(0,count-1)}:cap.set(cv2.CAP_PROP_POS_FRAMES,i); ok,x=cap.read(); frames.extend([x] if ok else [])
     cap.release(); bars=any(float(np.mean(cv2.cvtColor(x,cv2.COLOR_BGR2GRAY)<8))>.92 for x in frames); per=[_shot_validation(x) for x in plan]; ok=path.exists() and count>0 and w*4==h*3 and abs(count/fps-expected)<=1 and not bars and all(x['status']=='PASS' for x in per)
-    sequence=[rule for rule in plan if rule.get('interaction_requirement')=='sequence']; sequence_ok=all(x['focus_subject_present'] and x['focus_subject_safe'] and x['action_preserved'] for x,rule in zip(per,plan) if rule.get('interaction_requirement')=='sequence')
+    sequence=[rule for rule in plan if rule.get('interaction_requirement')=='sequence']; sequence_ok=all((x['focus_subject_present'] and x['focus_subject_safe'] if rule.get('required_person_focus',rule.get('focus_subject') in {'woman','man','multiple_people'}) else True) and x['action_preserved'] for x,rule in zip(per,plan) if rule.get('interaction_requirement')=='sequence')
     return {'status':'PASS' if ok and sequence_ok else 'REVIEW','review_reason':'REVIEW_VERTICAL' if not (ok and sequence_ok) else None,'width':w,'height':h,'aspect_ratio':'3:4' if w*4==h*3 else 'other','duration_seconds':count/fps,'black_bars':bars,'shots':per,'sequence_interaction_preserved':sequence_ok,'sequence_interaction_shots':[x['shot_id'] for x in sequence],'stable_per_shot':all(x['crop_stable'] for x in per),'semantic_retained':all(x['interaction_preserved'] for x in per)}
 def thumbnail(video:Path,out:Path)->float:
     cap=cv2.VideoCapture(str(video)); count=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); fps=cap.get(cv2.CAP_PROP_FPS) or 24.; best=None; score=-1.; selected=1
@@ -305,7 +320,7 @@ def reframe_fingerprint(event:dict[str,Any],shots:dict[str,dict[str,Any]],width:
     """Vertical-only cache key.  Semantic/horizontal stages intentionally stay outside it."""
     plan=event.get('visual',{}).get('shot_focus_plan',event.get('shot_focus_plan',[]))
     shot_identity=[{'shot_id':sid,'start':shots.get(sid,{}).get('start_seconds'),'end':shots.get(sid,{}).get('end_seconds')} for sid in event.get('source_shot_ids',[])]
-    return fingerprint({'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'shot_focus_schema_version':SHOT_FOCUS_SCHEMA_VERSION,'local_detector_version':LOCAL_DETECTOR_VERSION,'crop':{'safe_margin':SAFE_MARGIN,'aspect_ratio':'3:4','width':width,'height':height},'source_shots':shot_identity,'semantic_focus_plan':plan})
+    return fingerprint({'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':REFRAME_VALIDATION_COMPATIBILITY_VERSION,'shot_focus_schema_version':SHOT_FOCUS_SCHEMA_VERSION,'local_detector_version':LOCAL_DETECTOR_VERSION,'crop':{'safe_margin':SAFE_MARGIN,'aspect_ratio':'3:4','width':width,'height':height},'source_shots':shot_identity,'semantic_focus_plan':plan})
 def _vertical_reuse_valid(assets:Path,base:str,reframe_fp:str)->bool:
     meta=assets/f'{base}.json'
     try:
@@ -366,8 +381,6 @@ def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False)
         fp=fingerprint({'range':[e['start_frame'],e['end_frame_exclusive']],'shots':e.get('source_shot_ids',[]),'semantic':e.get('visual',{}),'version':'horizontal-v1'}); ledger.register(e,fp); aid,slug=asset_identity(run,movie_id,e); base=f'{aid}-{slug}'; final=[assets/f'{base}.mp4',assets/f'v{base}.mp4',assets/f'{base}.jpg',assets/f'v{base}.jpg',assets/f'{base}.json']; eid=e['visual_event_id']; expected=(e['end_frame_exclusive']-e['start_frame'])/fps; reframe_fp=reframe_fingerprint(e,shots,width,height)
         if _vertical_reuse_valid(assets,base,reframe_fp): reused+=1; ledger.stage(eid,'finalization','COMPLETE',decision='PASS',asset_hub_ready=True,reused=True,reframe_fingerprint=reframe_fp); continue
         prior=ledger.data['events'][eid]['stages']
-        if prior.get('vertical_validation',{}).get('status') == 'COMPLETE' and prior['vertical_validation'].get('decision') == 'REVIEW_VERTICAL' and prior['vertical_validation'].get('reframe_fingerprint') == reframe_fp:
-            review+=1; review_reused+=1; ledger.stage(eid,'finalization','COMPLETE',decision='REVIEW_VERTICAL',asset_hub_ready=False,reused=True,reframe_fingerprint=reframe_fp); continue
         stage=work/eid; stage.mkdir(parents=True,exist_ok=True); h,v,ht,vt,md=[stage/x.name for x in final]; old=pilot/'exports'/f"{e['candidate_id']}.mp4"; ledger.stage(eid,'horizontal_export','RUNNING')
         # A stale package can still donate its verified horizontal asset, but no
         # stale vertical member may remain in assets during replacement.
@@ -379,18 +392,29 @@ def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False)
             horizontal_mode=export_horizontal_from_source(movie,e,h,width,height,fps); horizontal_generation=0 if horizontal_mode=='stream_copy' else 1; ledger.stage(eid,'horizontal_export','COMPLETE',export_mode=horizontal_mode)
         horizontal=probe(h,width,height,expected,e['end_frame_exclusive']-e['start_frame']); ledger.stage(eid,'horizontal_validation','COMPLETE' if horizontal['status']=='PASS' else 'FAILED_RETRYABLE',validation=horizontal['status'])
         if horizontal['status']!='PASS':continue
-        vertical=None; plan=[]; execution_error=None
-        for attempt,strategy in enumerate(('subject_focus','interaction_aware'),1):
-            try:
-                plan=build_shot_crop_plan(movie,e,shots,width,height,strategy=strategy); v.unlink(missing_ok=True); ledger.stage(eid,'vertical_reframe','RUNNING',attempt=attempt,strategy=strategy,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp,plan=plan,source_media='movie.mp4',export_mode='source_crop_encode'); render_vertical(movie,v,e,plan); vertical=validate_vertical(v,expected,plan,e)
-                ledger.stage(eid,'vertical_reframe','COMPLETE',attempt=attempt,strategy=strategy,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp)
-            except (OSError,RuntimeError,cv2.error,subprocess.CalledProcessError) as error:
-                execution_error=str(error); ledger.stage(eid,'vertical_reframe','FAILED_RETRYABLE',attempt=attempt,error=execution_error,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp); break
-            if vertical['status']=='PASS':break
+        vertical=None; plan=[]; execution_error=None; attempt=0
+        # A review MP4 with the same rendering fingerprint is valid pixel work.
+        # Revalidate it under the current validator before considering a render.
+        prior_review=prior.get('vertical_validation',{})
+        review_video=review_dir/f'v{base}.mp4'
+        if prior_review.get('status') == 'COMPLETE' and prior_review.get('decision') == 'REVIEW_VERTICAL' and prior_review.get('reframe_fingerprint') == reframe_fp and review_video.is_file():
+            plan=list(prior.get('vertical_reframe',{}).get('plan',[])); attempt=int(prior.get('vertical_reframe',{}).get('attempt',0))
+            if plan:
+                shutil.copy2(review_video,v); vertical=validate_vertical(v,expected,plan,e)
+                ledger.stage(eid,'vertical_reframe','COMPLETE',attempt=attempt,reused=True,strategy=prior.get('vertical_reframe',{}).get('strategy'),reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp)
+                review_reused+=1
+        if vertical is None:
+            for attempt,strategy in enumerate(('subject_focus','interaction_aware'),1):
+                try:
+                    plan=build_shot_crop_plan(movie,e,shots,width,height,strategy=strategy); v.unlink(missing_ok=True); ledger.stage(eid,'vertical_reframe','RUNNING',attempt=attempt,strategy=strategy,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp,plan=plan,source_media='movie.mp4',export_mode='source_crop_encode'); render_vertical(movie,v,e,plan); vertical=validate_vertical(v,expected,plan,e)
+                    ledger.stage(eid,'vertical_reframe','COMPLETE',attempt=attempt,strategy=strategy,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp)
+                except (OSError,RuntimeError,cv2.error,subprocess.CalledProcessError) as error:
+                    execution_error=str(error); ledger.stage(eid,'vertical_reframe','FAILED_RETRYABLE',attempt=attempt,error=execution_error,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp); break
+                if vertical['status']=='PASS':break
         if execution_error:
             failed_retryable+=1; ledger.stage(eid,'vertical_validation','FAILED_RETRYABLE',reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp,error=execution_error); ledger.stage(eid,'finalization','FAILED_RETRYABLE',asset_hub_ready=False,error=execution_error); continue
         decision='PASS' if vertical and vertical['status']=='PASS' else 'REVIEW_VERTICAL'
-        ledger.stage(eid,'vertical_validation','COMPLETE',decision=decision,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp,validation=vertical)
+        ledger.stage(eid,'vertical_validation','COMPLETE',decision=decision,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,vertical_validation_version=VERTICAL_VALIDATION_VERSION,reframe_fingerprint=reframe_fp,validation=vertical)
         if decision == 'REVIEW_VERTICAL':
             review+=1; review_dir.mkdir(parents=True,exist_ok=True); review_video=review_dir/f'v{base}.mp4'; review_video.unlink(missing_ok=True); shutil.move(str(v),review_video); write_json(review_dir/f'{base}.json',{'schema_version':'vertical_review_v1','asset':{'id':aid,'source_asset_id':eid},'asset_hub_ready':False,'review_vertical_file':review_video.name,'media':{'vertical':{'file':review_video.name,'source_media':'movie.mp4','export_mode':'source_crop_encode','generation_from_source':1}},'analysis':{'semantic_ready':False,'final_asset_semantics_validated':False},'shot_focus_plan':e.get('visual',{}).get('shot_focus_plan',[]),'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'reframe_fingerprint':reframe_fp,'validation':vertical}); ledger.stage(eid,'finalization','COMPLETE',decision='REVIEW_VERTICAL',asset_hub_ready=False,reframe_fingerprint=reframe_fp); safe_cleanup(work,keep_debug_artifacts); continue
         htime=thumbnail(h,ht); ledger.stage(eid,'horizontal_thumbnail','COMPLETE'); vtime=thumbnail(v,vt); ledger.stage(eid,'vertical_thumbnail','COMPLETE',reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,vertical_validation_version=VERTICAL_VALIDATION_VERSION,reframe_fingerprint=reframe_fp); data={'asset_metadata_v1':'asset_metadata_v1','asset':{'id':aid,'slug':slug,'source_asset_id':eid,'source_movie_id':movie_id},'media':{'filename':h.name,'sha256':sha256_file(h),'duration_seconds':expected,'width':width,'height':height,'fps':fps,'orientation':'landscape','aspect_ratio':'other','horizontal':{'file':h.name,'thumbnail':ht.name,'validated':True,'source_media':'movie.mp4','export_mode':horizontal_mode,'generation_from_source':horizontal_generation},'vertical':{'file':v.name,'thumbnail':vt.name,'sha256':sha256_file(v),'aspect_ratio':'3:4','validated':True,'source_media':'movie.mp4','export_mode':'source_crop_encode','generation_from_source':1}},'analysis':{'semantic_ready':True,'final_asset_semantics_validated':True,'source_video_analyzed':True,'profile':'pilot-finalization-3e.2.2','producer':'movie_broll','producer_version':'0.1.0','generated_at':'durable'},'source_timeline':{'start_seconds':e['start_seconds'],'end_seconds':e['end_seconds'],'visual_event_id':eid,'shot_ids':e.get('source_shot_ids',[])},'visual':{'source_horizontal':e.get('visual',{}),'people':e.get('people',[]),'relationships':e.get('relationships',[]),'final_vertical':{'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'shot_focus_schema_version':SHOT_FOCUS_SCHEMA_VERSION,'local_detector_version':LOCAL_DETECTOR_VERSION,'reframe_fingerprint':reframe_fp,'reframe':{'shots':plan,'attempts':attempt},'validation':vertical}},'audio':{'speech_present':{'value':False,'source':'export_contract','confidence':1.0}},'narrative':e.get('narrative',{}),'editorial':e.get('editorial',{}),'export':{'orientation':'landscape','aspect_ratio':'other','reframe_applied':True,'reframe_profile':'local shot-aware subject track 3:4 crop'},'thumbnail':{'filename':ht.name,'timestamp_seconds':htime,'vertical_filename':vt.name,'vertical_timestamp_seconds':vtime}}; write_json(md,data)

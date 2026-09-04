@@ -213,6 +213,32 @@ def test_focus_core_allows_large_person_body_but_rejects_lost_critical_region():
     failed=_shot_validation(base|{'x':600})
     assert failed['critical_focus_clipping'] and failed['status']=='FAIL'
 
+def test_close_up_head_biased_core_allows_body_clipping_but_not_lost_head():
+    # Equivalent geometry to SW_06_SHOT_0010: a YOLO body box nearly fills the
+    # 1720px source while the approved 540px crop contains its upper-centre head.
+    base={'shot_id':'S1','focus_subject':'woman','required_person_focus':True,'directive_available':True,'focus_bbox':{'x':80,'y':0,'width':1440,'height':720},'crop_width':540,'source_width':1720,'x':506,'anchors':[],'strategy':'subject_focus','action_preserved':True,'interaction_requirement':'sequence'}
+    passed=_shot_validation(base)
+    assert passed['full_bbox_clipping'] and not passed['critical_focus_clipping'] and passed['focus_subject_safe'] and not passed['introduced_subject_clipping'] and passed['status']=='PASS'
+    head_lost=_shot_validation(base|{'x':1000})
+    assert head_lost['critical_focus_clipping'] and not head_lost['focus_subject_safe'] and head_lost['status']=='FAIL'
+    torso_only=_shot_validation(base|{'x':50})
+    assert torso_only['critical_focus_clipping'] and torso_only['status']=='FAIL'
+
+def test_sequence_action_region_uses_action_validation_not_person_geometry():
+    action={'shot_id':'S1','focus_subject':'action_region','directive_available':True,'focus_bbox':{'x':0,'y':0,'width':1440,'height':720},'crop_width':540,'source_width':1720,'x':506,'anchors':[],'strategy':'subject_focus','action_preserved':True,'interaction_requirement':'sequence'}
+    value=_shot_validation(action)
+    assert value['status']=='PASS' and value['focus_subject_safe'] is None
+
+def test_medium_person_core_and_validation_version_do_not_change_render_fingerprint(monkeypatch):
+    import movie_broll.finalization as f
+    medium={'shot_id':'S1','focus_subject':'man','required_person_focus':True,'directive_available':True,'focus_bbox':{'x':100,'y':0,'width':600,'height':700},'crop_width':540,'source_width':1720,'x':130,'anchors':[],'strategy':'subject_focus','action_preserved':True,'interaction_requirement':'sequence'}
+    # 30%-70% remains the ordinary-person core, so this existing framing passes.
+    assert _shot_validation(medium)['status']=='PASS'
+    e=event(); shots={'S1':{'start_seconds':0,'end_seconds':1}}
+    before=reframe_fingerprint(e,shots,160,120)
+    monkeypatch.setattr(f,'VERTICAL_VALIDATION_VERSION','future-validation-only')
+    assert reframe_fingerprint(e,shots,160,120) == before
+
 def test_action_and_environment_ignore_unrelated_person_bbox_clipping():
     base={'shot_id':'S1','directive_available':True,'focus_bbox':{'x':0,'y':0,'width':900,'height':700},'crop_width':540,'source_width':1720,'x':300,'anchors':[],'strategy':'subject_focus','action_preserved':True,'interaction_requirement':'none'}
     assert _shot_validation(base|{'focus_subject':'action_region'})['status']=='PASS'
