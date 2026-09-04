@@ -184,7 +184,7 @@ def ffmpeg_export_command(movie:Path,c:dict[str,Any],output:Path, fps:float=24.0
     # Decode from the source origin.  Input seeking is deliberately not used as
     # frame authority: variable PTS/keyframe seeking can otherwise yield N-1.
     vf=f"trim=start_frame={start}:end_frame={end},setpts=PTS-STARTPTS"
-    return ['ffmpeg','-y','-ss','0','-i',str(movie),'-map','0:v:0','-vf',vf,'-vsync','0','-frames:v',str(count),'-c:v','libx264','-crf','19','-preset','medium','-an',str(output)]
+    return ['ffmpeg','-y','-ss','0','-i',str(movie),'-map','0:v:0','-vf',vf,'-vsync','0','-frames:v',str(count),'-c:v','libx264','-crf','16','-preset','medium','-pix_fmt','yuv420p','-an',str(output)]
 def probe(path:Path, width:int,height:int, expected:float, expected_frame_count:int|None=None)->dict[str,Any]:
     raw=subprocess.check_output(['ffprobe','-v','error','-count_frames','-show_entries','stream=codec_type,codec_name,width,height,nb_read_frames:format=duration','-of','json',str(path)],text=True); data=json.loads(raw); streams=data.get('streams',[]); video=[x for x in streams if x['codec_type']=='video']; audio=[x for x in streams if x['codec_type']=='audio']; duration=float(data.get('format',{}).get('duration',0)); actual=int(video[0]['nb_read_frames']) if video and str(video[0].get('nb_read_frames','')).isdigit() else None
     count_ok=expected_frame_count is None or actual==expected_frame_count

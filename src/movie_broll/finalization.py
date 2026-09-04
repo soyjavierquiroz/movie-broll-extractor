@@ -5,13 +5,13 @@ from pathlib import Path
 from typing import Any, Callable
 import cv2
 import numpy as np
-from .broll_pilot import ffmpeg_export_command, probe
+from .broll_pilot import boundary_validation, ffmpeg_export_command, probe
 from .processing_ledger import ProcessingLedger, fingerprint
 from .utils import sha256_file, write_json
 
 MOVIE_CODES={"romper-el-circulo":"rc"}; SAFE_MARGIN=.08
 # This is deliberately persistent: it is part of every vertical-only reuse key.
-REFRAME_ALGORITHM_VERSION="3e.2.3.7-frame-accurate-smooth-tracking-v4"
+REFRAME_ALGORITHM_VERSION="3e.2.3.8-source-preserving-export-v5"
 SHOT_FOCUS_SCHEMA_VERSION="shot_focus_plan_v1"
 LOCAL_DETECTOR_VERSION="yolov5n-onnx-person+haar-face-v1"
 PERSON_CANDIDATE_CONFIDENCE=.05; PERSON_NMS_IOU=.45
@@ -226,19 +226,36 @@ def _x_at(rule:dict[str,Any],time:float)->int:
     for a,b in zip(anchors,anchors[1:]):
         if a['time']<=time<=b['time']:return round(a['x']+(b['x']-a['x'])*(time-a['time'])/max(.001,b['time']-a['time']))
     return round(anchors[-1]['x'])
-def render_vertical(horizontal:Path,output:Path,event:dict[str,Any],plan:list[dict[str,Any]])->None:
-    cap=cv2.VideoCapture(str(horizontal)); fps=cap.get(cv2.CAP_PROP_FPS) or 24.; w,h=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); cw=min(w,round(h*3/4)); temp=output.with_suffix('.render.tmp.mp4'); writer=cv2.VideoWriter(str(temp),cv2.VideoWriter_fourcc(*'mp4v'),fps,(cw,h)); n=0
+def render_vertical(source_movie:Path,output:Path,event:dict[str,Any],plan:list[dict[str,Any]])->None:
+    """Crop original source pixels and make exactly one final H.264 generation.
+
+    Frames are passed as raw BGR directly to ffmpeg.  In particular, an event
+    horizontal MP4 is never a pixel parent and no temporary lossy render exists.
+    """
+    cap=cv2.VideoCapture(str(source_movie)); fps=cap.get(cv2.CAP_PROP_FPS) or 24.; w,h=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); cw=min(w,round(h*3/4)); n=0; start_frame=int(event.get('start_frame',round(float(event['start_seconds'])*fps))); total=int(event.get('end_frame_exclusive',round(float(event['end_seconds'])*fps)))-start_frame; cap.set(cv2.CAP_PROP_POS_FRAMES,start_frame)
+    if not cap.isOpened() or not w or not h or total<=0: cap.release(); raise RuntimeError('vertical reframe cannot open valid source media/event range')
+    command=['ffmpeg','-y','-f','rawvideo','-pixel_format','bgr24','-video_size',f'{cw}x{h}','-framerate',str(fps),'-i','-','-map','0:v:0','-c:v','libx264','-crf','16','-preset','medium','-pix_fmt','yuv420p','-an',str(output)]
+    process=subprocess.Popen(command,stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
     def matches(rule:dict[str,Any],index:int,relative:float)->bool:
         if 'render_start_frame' in rule:return rule['render_start_frame']<=index<rule['render_end_frame_exclusive']
         return rule.get('render_start_seconds',rule['start_seconds'])<=relative<rule.get('render_end_seconds',rule['end_seconds'])
-    while True:
-        ok,frame=cap.read()
-        if not ok:break
-        relative=n/fps; rule=next((x for x in plan if matches(x,n,relative)),plan[-1]); x=max(0,min(w-cw,_x_at(rule,float(event['start_seconds'])+relative))); writer.write(frame[:,x:x+cw]); n+=1
-    writer.release(); cap.release()
-    if not n:temp.unlink(missing_ok=True); raise RuntimeError('vertical reframe decoded no frames')
-    try:subprocess.run(['ffmpeg','-y','-i',str(temp),'-map','0:v:0','-c:v','libx264','-crf','19','-an',str(output)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-    finally:temp.unlink(missing_ok=True)
+    stderr=''; result=-1
+    try:
+        while n<total:
+            ok,frame=cap.read()
+            if not ok: break
+            relative=n/fps; rule=next((x for x in plan if matches(x,n,relative)),plan[-1]); x=max(0,min(w-cw,_x_at(rule,float(event['start_seconds'])+relative))); process.stdin.write(np.ascontiguousarray(frame[:,x:x+cw]).tobytes()); n+=1
+        process.stdin.close(); stderr=process.stderr.read().decode(errors='replace'); result=process.wait()
+    except (BrokenPipeError,OSError) as error:
+        stderr=str(error)
+        if process.stdin and not process.stdin.closed: process.stdin.close()
+        result=process.wait()
+    finally:
+        cap.release()
+        if process.stdin and not process.stdin.closed: process.stdin.close()
+    if not n or n!=total or result:
+        output.unlink(missing_ok=True); tail='\n'.join(stderr.splitlines()[-8:])
+        raise RuntimeError(f'vertical source crop encode failed after {n}/{total} frames: {tail or result}')
 def _shot_validation(rule:dict[str,Any])->dict[str,Any]:
     crop=float(rule['crop_width']); x=float(rule['x']); margin=crop*SAFE_MARGIN; focus=rule.get('focus_bbox'); source=float(rule['source_width']); source_clip=False; introduced=False; empty=False; full_clipping=False; critical_clipping=False
     required_person=bool(rule.get('required_person_focus',rule.get('focus_subject') in {'woman','man','multiple_people'}))
@@ -294,6 +311,30 @@ def _vertical_reuse_valid(assets:Path,base:str,reframe_fp:str)->bool:
     try:
         data=json.loads(meta.read_text()); final=data.get('visual',{}).get('final_vertical',{}); return _complete_package(assets,base) and final.get('reframe_fingerprint')==reframe_fp and final.get('reframe_algorithm_version')==REFRAME_ALGORITHM_VERSION and final.get('vertical_validation_version')==VERTICAL_VALIDATION_VERSION
     except (OSError,json.JSONDecodeError): return False
+def _horizontal_reuse_provenance(assets:Path,base:str)->dict[str,Any]|None:
+    """A stale vertical may donate horizontal pixels only under this contract."""
+    try:
+        data=json.loads((assets/f'{base}.json').read_text()); horizontal=data.get('media',{}).get('horizontal',{})
+        if (assets/f'{base}.mp4').is_file() and horizontal.get('source_media')=='movie.mp4' and horizontal.get('export_mode') in {'stream_copy','source_encode'} and horizontal.get('generation_from_source') in {0,1}: return horizontal
+    except (OSError,json.JSONDecodeError): pass
+    return None
+def stream_copy_export_command(movie:Path,event:dict[str,Any],output:Path)->list[str]:
+    """Attempt a source copy; boundary validation decides whether it is usable."""
+    return ['ffmpeg','-y','-i',str(movie),'-ss',str(event['start_seconds']),'-to',str(event['end_seconds']),'-map','0:v:0','-c:v','copy','-an',str(output)]
+def export_horizontal_from_source(movie:Path,event:dict[str,Any],output:Path,width:int,height:int,fps:float)->str:
+    """Prefer an audited stream copy; otherwise perform one direct source encode."""
+    expected=(event['end_frame_exclusive']-event['start_frame'])/fps; frames=event['end_frame_exclusive']-event['start_frame']; copied=output.with_suffix('.copy.tmp.mp4')
+    try:
+        subprocess.run(stream_copy_export_command(movie,event,copied),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        container=probe(copied,width,height,expected,frames); boundaries=boundary_validation(movie,copied,event)
+        if container['status']=='PASS' and boundaries['status']=='PASS': copied.replace(output); return 'stream_copy'
+    except (OSError,subprocess.CalledProcessError,RuntimeError): pass
+    finally: copied.unlink(missing_ok=True)
+    subprocess.run(ffmpeg_export_command(movie,event,output,fps),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    container=probe(output,width,height,expected,frames); boundaries=boundary_validation(movie,output,event)
+    if container['status']!='PASS' or boundaries['status']!='PASS':
+        output.unlink(missing_ok=True); raise RuntimeError('source horizontal encode failed duration/frame boundary validation')
+    return 'source_encode'
 def _retire_package(assets:Path,base:str)->None:
     """Remove a stale complete package only after its horizontal source is copied to work."""
     for pre,suffix in (('', '.mp4'),('v','.mp4'),('', '.jpg'),('v','.jpg'),('', '.json')): (assets/f'{pre}{base}{suffix}').unlink(missing_ok=True)
@@ -330,15 +371,18 @@ def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False)
         stage=work/eid; stage.mkdir(parents=True,exist_ok=True); h,v,ht,vt,md=[stage/x.name for x in final]; old=pilot/'exports'/f"{e['candidate_id']}.mp4"; ledger.stage(eid,'horizontal_export','RUNNING')
         # A stale package can still donate its verified horizontal asset, but no
         # stale vertical member may remain in assets during replacement.
-        if (assets/f'{base}.mp4').exists(): shutil.copy2(assets/f'{base}.mp4',h); _retire_package(assets,base); horizontal_reused+=1; ledger.stage(eid,'horizontal_export','COMPLETE',reused=True)
-        elif old.exists():shutil.copy2(old,h)
-        else:subprocess.run(ffmpeg_export_command(movie,e,h,fps),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        reused_horizontal=_horizontal_reuse_provenance(assets,base)
+        if reused_horizontal:
+            shutil.copy2(assets/f'{base}.mp4',h); _retire_package(assets,base); horizontal_mode=str(reused_horizontal['export_mode']); horizontal_generation=int(reused_horizontal['generation_from_source']); horizontal_reused+=1; ledger.stage(eid,'horizontal_export','COMPLETE',reused=True,export_mode=horizontal_mode)
+        else:
+            if (assets/f'{base}.mp4').exists(): _retire_package(assets,base)
+            horizontal_mode=export_horizontal_from_source(movie,e,h,width,height,fps); horizontal_generation=0 if horizontal_mode=='stream_copy' else 1; ledger.stage(eid,'horizontal_export','COMPLETE',export_mode=horizontal_mode)
         horizontal=probe(h,width,height,expected,e['end_frame_exclusive']-e['start_frame']); ledger.stage(eid,'horizontal_validation','COMPLETE' if horizontal['status']=='PASS' else 'FAILED_RETRYABLE',validation=horizontal['status'])
         if horizontal['status']!='PASS':continue
         vertical=None; plan=[]; execution_error=None
         for attempt,strategy in enumerate(('subject_focus','interaction_aware'),1):
             try:
-                plan=build_shot_crop_plan(movie,e,shots,width,height,strategy=strategy); v.unlink(missing_ok=True); ledger.stage(eid,'vertical_reframe','RUNNING',attempt=attempt,strategy=strategy,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp,plan=plan); render_vertical(h,v,e,plan); vertical=validate_vertical(v,expected,plan,e)
+                plan=build_shot_crop_plan(movie,e,shots,width,height,strategy=strategy); v.unlink(missing_ok=True); ledger.stage(eid,'vertical_reframe','RUNNING',attempt=attempt,strategy=strategy,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp,plan=plan,source_media='movie.mp4',export_mode='source_crop_encode'); render_vertical(movie,v,e,plan); vertical=validate_vertical(v,expected,plan,e)
                 ledger.stage(eid,'vertical_reframe','COMPLETE',attempt=attempt,strategy=strategy,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp)
             except (OSError,RuntimeError,cv2.error,subprocess.CalledProcessError) as error:
                 execution_error=str(error); ledger.stage(eid,'vertical_reframe','FAILED_RETRYABLE',attempt=attempt,error=execution_error,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp); break
@@ -348,8 +392,8 @@ def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False)
         decision='PASS' if vertical and vertical['status']=='PASS' else 'REVIEW_VERTICAL'
         ledger.stage(eid,'vertical_validation','COMPLETE',decision=decision,reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,reframe_fingerprint=reframe_fp,validation=vertical)
         if decision == 'REVIEW_VERTICAL':
-            review+=1; review_dir.mkdir(parents=True,exist_ok=True); review_video=review_dir/f'v{base}.mp4'; review_video.unlink(missing_ok=True); shutil.move(str(v),review_video); write_json(review_dir/f'{base}.json',{'schema_version':'vertical_review_v1','asset':{'id':aid,'source_asset_id':eid},'asset_hub_ready':False,'review_vertical_file':review_video.name,'analysis':{'semantic_ready':False,'final_asset_semantics_validated':False},'shot_focus_plan':e.get('visual',{}).get('shot_focus_plan',[]),'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'reframe_fingerprint':reframe_fp,'validation':vertical}); ledger.stage(eid,'finalization','COMPLETE',decision='REVIEW_VERTICAL',asset_hub_ready=False,reframe_fingerprint=reframe_fp); safe_cleanup(work,keep_debug_artifacts); continue
-        htime=thumbnail(h,ht); ledger.stage(eid,'horizontal_thumbnail','COMPLETE'); vtime=thumbnail(v,vt); ledger.stage(eid,'vertical_thumbnail','COMPLETE',reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,vertical_validation_version=VERTICAL_VALIDATION_VERSION,reframe_fingerprint=reframe_fp); data={'asset_metadata_v1':'asset_metadata_v1','asset':{'id':aid,'slug':slug,'source_asset_id':eid,'source_movie_id':movie_id},'media':{'filename':h.name,'sha256':sha256_file(h),'duration_seconds':expected,'width':width,'height':height,'fps':fps,'orientation':'landscape','aspect_ratio':'other','horizontal':{'file':h.name,'thumbnail':ht.name,'validated':True},'vertical':{'file':v.name,'thumbnail':vt.name,'sha256':sha256_file(v),'aspect_ratio':'3:4','validated':True}},'analysis':{'semantic_ready':True,'final_asset_semantics_validated':True,'source_video_analyzed':True,'profile':'pilot-finalization-3e.2.2','producer':'movie_broll','producer_version':'0.1.0','generated_at':'durable'},'source_timeline':{'start_seconds':e['start_seconds'],'end_seconds':e['end_seconds'],'visual_event_id':eid,'shot_ids':e.get('source_shot_ids',[])},'visual':{'source_horizontal':e.get('visual',{}),'people':e.get('people',[]),'relationships':e.get('relationships',[]),'final_vertical':{'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'shot_focus_schema_version':SHOT_FOCUS_SCHEMA_VERSION,'local_detector_version':LOCAL_DETECTOR_VERSION,'reframe_fingerprint':reframe_fp,'reframe':{'shots':plan,'attempts':attempt},'validation':vertical}},'audio':{'speech_present':{'value':False,'source':'export_contract','confidence':1.0}},'narrative':e.get('narrative',{}),'editorial':e.get('editorial',{}),'export':{'orientation':'landscape','aspect_ratio':'other','reframe_applied':True,'reframe_profile':'local shot-aware subject track 3:4 crop'},'thumbnail':{'filename':ht.name,'timestamp_seconds':htime,'vertical_filename':vt.name,'vertical_timestamp_seconds':vtime}}; write_json(md,data)
+            review+=1; review_dir.mkdir(parents=True,exist_ok=True); review_video=review_dir/f'v{base}.mp4'; review_video.unlink(missing_ok=True); shutil.move(str(v),review_video); write_json(review_dir/f'{base}.json',{'schema_version':'vertical_review_v1','asset':{'id':aid,'source_asset_id':eid},'asset_hub_ready':False,'review_vertical_file':review_video.name,'media':{'vertical':{'file':review_video.name,'source_media':'movie.mp4','export_mode':'source_crop_encode','generation_from_source':1}},'analysis':{'semantic_ready':False,'final_asset_semantics_validated':False},'shot_focus_plan':e.get('visual',{}).get('shot_focus_plan',[]),'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'reframe_fingerprint':reframe_fp,'validation':vertical}); ledger.stage(eid,'finalization','COMPLETE',decision='REVIEW_VERTICAL',asset_hub_ready=False,reframe_fingerprint=reframe_fp); safe_cleanup(work,keep_debug_artifacts); continue
+        htime=thumbnail(h,ht); ledger.stage(eid,'horizontal_thumbnail','COMPLETE'); vtime=thumbnail(v,vt); ledger.stage(eid,'vertical_thumbnail','COMPLETE',reframe_algorithm_version=REFRAME_ALGORITHM_VERSION,vertical_validation_version=VERTICAL_VALIDATION_VERSION,reframe_fingerprint=reframe_fp); data={'asset_metadata_v1':'asset_metadata_v1','asset':{'id':aid,'slug':slug,'source_asset_id':eid,'source_movie_id':movie_id},'media':{'filename':h.name,'sha256':sha256_file(h),'duration_seconds':expected,'width':width,'height':height,'fps':fps,'orientation':'landscape','aspect_ratio':'other','horizontal':{'file':h.name,'thumbnail':ht.name,'validated':True,'source_media':'movie.mp4','export_mode':horizontal_mode,'generation_from_source':horizontal_generation},'vertical':{'file':v.name,'thumbnail':vt.name,'sha256':sha256_file(v),'aspect_ratio':'3:4','validated':True,'source_media':'movie.mp4','export_mode':'source_crop_encode','generation_from_source':1}},'analysis':{'semantic_ready':True,'final_asset_semantics_validated':True,'source_video_analyzed':True,'profile':'pilot-finalization-3e.2.2','producer':'movie_broll','producer_version':'0.1.0','generated_at':'durable'},'source_timeline':{'start_seconds':e['start_seconds'],'end_seconds':e['end_seconds'],'visual_event_id':eid,'shot_ids':e.get('source_shot_ids',[])},'visual':{'source_horizontal':e.get('visual',{}),'people':e.get('people',[]),'relationships':e.get('relationships',[]),'final_vertical':{'reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'shot_focus_schema_version':SHOT_FOCUS_SCHEMA_VERSION,'local_detector_version':LOCAL_DETECTOR_VERSION,'reframe_fingerprint':reframe_fp,'reframe':{'shots':plan,'attempts':attempt},'validation':vertical}},'audio':{'speech_present':{'value':False,'source':'export_contract','confidence':1.0}},'narrative':e.get('narrative',{}),'editorial':e.get('editorial',{}),'export':{'orientation':'landscape','aspect_ratio':'other','reframe_applied':True,'reframe_profile':'local shot-aware subject track 3:4 crop'},'thumbnail':{'filename':ht.name,'timestamp_seconds':htime,'vertical_filename':vt.name,'vertical_timestamp_seconds':vtime}}; write_json(md,data)
         for src,dst in zip((h,v,ht,vt,md),final):shutil.move(str(src),dst)
         old.unlink(missing_ok=True); (review_dir/f'{base}.json').unlink(missing_ok=True); (review_dir/f'v{base}.mp4').unlink(missing_ok=True); ledger.stage(eid,'metadata','COMPLETE',path=str(final[-1])); ledger.stage(eid,'cleanup','COMPLETE',removed_bytes=safe_cleanup(work,keep_debug_artifacts)); ledger.stage(eid,'finalization','COMPLETE',decision='PASS',asset_hub_ready=True,reframe_fingerprint=reframe_fp); completed+=1
     final_bytes=sum(x.stat().st_size for x in assets.glob('*') if x.is_file()); temp_bytes=sum(x.stat().st_size for x in work.rglob('*') if x.is_file()); status='PARTIAL' if failed_retryable or failed_final else 'COMPLETE'; ledger.summary(status=status,final_assets=completed,vertical_review=review,vertical_reused=reused,vertical_review_reused=review_reused,horizontal_reused=horizontal_reused,semantic_reused=semantic_reused,vertical_failed_retryable=failed_retryable,vertical_failed_final=failed_final,disk={'final_assets_bytes':final_bytes,'temporary_bytes':temp_bytes}); return {'status':status,'completed':completed,'review':review,'reused':reused,'review_reused':review_reused,'horizontal_reused':horizontal_reused,'semantic_reused':semantic_reused,'failed_retryable':failed_retryable,'failed_final':failed_final,'assets':assets,'review_dir':review_dir}

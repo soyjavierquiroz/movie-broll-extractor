@@ -3,7 +3,7 @@ from pathlib import Path
 import tomllib
 import cv2
 import numpy as np
-from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, _choose_target, _directive, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, letterbox, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, thumbnail, unletterbox_bbox, validate_vertical
+from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, _choose_target, _directive, _horizontal_reuse_provenance, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, export_horizontal_from_source, letterbox, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, stream_copy_export_command, thumbnail, unletterbox_bbox, validate_vertical
 
 def event(position='left', people=None, interaction=None):
     return {'visual_event_id':'VE_000123','start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.,'source_shot_ids':['S1','S2'],
@@ -230,8 +230,42 @@ def test_geometry_uses_source_absolute_timeline_and_stores_relative_render_bound
 
 def test_render_uses_integer_frame_boundary_on_first_new_shot_frame(tmp_path):
     horizontal=tmp_path/'h.mp4'; vertical=tmp_path/'v.mp4'; synthetic(horizontal)
-    e={'start_seconds':100.,'end_seconds':101.}; plan=[
-        {'shot_id':'A','start_seconds':100.,'end_seconds':100.5,'render_start_frame':0,'render_end_frame_exclusive':12,'anchors':[{'time':100.,'x':0}],'x':0},
-        {'shot_id':'B','start_seconds':100.5,'end_seconds':101.,'render_start_frame':12,'render_end_frame_exclusive':24,'anchors':[{'time':100.5,'x':70}],'x':70}]
+    e={'start_seconds':0.,'end_seconds':1.,'start_frame':0,'end_frame_exclusive':24}; plan=[
+        {'shot_id':'A','start_seconds':0.,'end_seconds':.5,'render_start_frame':0,'render_end_frame_exclusive':12,'anchors':[{'time':0.,'x':0}],'x':0},
+        {'shot_id':'B','start_seconds':.5,'end_seconds':1.,'render_start_frame':12,'render_end_frame_exclusive':24,'anchors':[{'time':.5,'x':70}],'x':70}]
     render_vertical(horizontal,vertical,e,plan); cap=cv2.VideoCapture(str(vertical)); cap.set(cv2.CAP_PROP_POS_FRAMES,12); ok,frame=cap.read(); cap.release()
     assert ok and np.mean(frame[:,:,2]) > 20  # frame 12 uses B/right crop, never A's stale crop
+
+def test_vertical_is_one_direct_source_crop_encode_without_scale(monkeypatch,tmp_path):
+    import movie_broll.finalization as f
+    source=tmp_path/'movie.mp4'; output=tmp_path/'vertical.mp4'; synthetic(source); calls=[]
+    real=f.subprocess.Popen
+    def popen(command,*args,**kwargs): calls.append(command); return real(command,*args,**kwargs)
+    monkeypatch.setattr(f.subprocess,'Popen',popen)
+    render_vertical(source,output,{'start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.},[{'shot_id':'S1','start_seconds':0.,'end_seconds':1.,'render_start_frame':0,'render_end_frame_exclusive':24,'anchors':[{'time':0.,'x':0}],'x':0}])
+    command=calls[0]
+    assert output.exists() and '-f' in command and command[command.index('-f')+1]=='rawvideo'
+    assert 'libx264' in command and '-vf' not in command and 'scale' not in ' '.join(command)
+
+def test_horizontal_copy_contract_and_provenance_are_source_owned(tmp_path):
+    event={'start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.}
+    command=stream_copy_export_command(Path('movie.mp4'),event,tmp_path/'h.mp4')
+    assert command[command.index('-c:v')+1]=='copy' and command[command.index('-i')+1]=='movie.mp4'
+    assets=tmp_path/'assets'; assets.mkdir(); base='rc001-x'; (assets/f'{base}.mp4').write_bytes(b'x')
+    (assets/f'{base}.json').write_text(json.dumps({'media':{'horizontal':{'source_media':'movie.mp4','export_mode':'source_encode','generation_from_source':1}}}))
+    assert _horizontal_reuse_provenance(assets,base)['generation_from_source']==1
+    (assets/f'{base}.json').write_text(json.dumps({'media':{'horizontal':{'export_mode':'legacy'}}}))
+    assert _horizontal_reuse_provenance(assets,base) is None
+
+def test_unsafe_stream_copy_falls_back_to_one_direct_source_encode(monkeypatch,tmp_path):
+    import movie_broll.finalization as f
+    source=tmp_path/'movie.mp4'; output=tmp_path/'horizontal.mp4'; event={'start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.}; commands=[]
+    def run(command,**kwargs):
+        commands.append(command); Path(command[-1]).write_bytes(b'video')
+    checks=iter(({'status':'PASS'},{'status':'PASS'}))
+    monkeypatch.setattr(f.subprocess,'run',run)
+    monkeypatch.setattr(f,'probe',lambda *args: next(checks))
+    monkeypatch.setattr(f,'boundary_validation',lambda *args: {'status':'FAIL'} if '.copy.tmp' in str(args[1]) else {'status':'PASS'})
+    assert export_horizontal_from_source(source,event,output,160,120,24.)=='source_encode'
+    assert commands[0][commands[0].index('-c:v')+1]=='copy'
+    assert commands[1][commands[1].index('-i')+1]==str(source) and 'libx264' in commands[1]
