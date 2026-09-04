@@ -328,6 +328,13 @@ def _vertical_reuse_valid(assets:Path,base:str,reframe_fp:str)->bool:
     except (OSError,json.JSONDecodeError): return False
 def _source_movie_sha256(run:Path,movie:Path)->str:
     """Reuse a persisted source digest; hash only when no trustworthy run record exists."""
+    # Production writes this only after hashing canonical movie.mp4.  It takes
+    # precedence over older pilot/source manifests, which may describe a prior
+    # replacement of the same input filename.
+    try:
+        digest=json.loads((run/'source_fingerprint.json').read_text()).get('movie_sha256')
+        if isinstance(digest,str) and re.fullmatch(r'[0-9a-f]{64}',digest): return digest
+    except (OSError,json.JSONDecodeError): pass
     for manifest in (run/'source-v1'/'source_manifest.json',run/'source-inspect-v1'/'source_manifest.json',run/'visual-smoke-v1'/'run_manifest.json'):
         try:
             data=json.loads(manifest.read_text())
@@ -425,8 +432,26 @@ def _existing_registered_package(run:Path,assets:Path,event:dict[str,Any])->bool
         entry=json.loads((run/'asset_registry.json').read_text()).get('events',{}).get(event['visual_event_id'],{})
         return bool(entry) and _complete_package(assets,f"{entry['asset_id']}-{entry['slug']}")
     except (OSError,KeyError,json.JSONDecodeError): return False
-def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False)->dict[str,Any]:
-    root=input_dir.resolve().parents[1]; movie_id=input_dir.name; run=root/'runs'/movie_id; pilot=run/'broll-pilot-v1'/window_id; candidates_path=pilot/'candidates.json'; candidates=json.loads(candidates_path.read_text()).get('candidates',[]); assets=run/'assets'; assets.mkdir(parents=True,exist_ok=True); _remove_incomplete_assets(assets); work=run/'.work'; work.mkdir(parents=True,exist_ok=True); review_dir=run/'review'; shots_path=run/'visual-smoke-v1'/'shots.jsonl'; shots={x['shot_id']:x for x in (json.loads(y) for y in shots_path.read_text().splitlines() if y.strip())} if shots_path.exists() else {}
+def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False,
+                   candidates:list[dict[str,Any]]|None=None,
+                   shots:dict[str,dict[str,Any]]|None=None)->dict[str,Any]:
+    """Finalize validated events.
+
+    ``candidates`` and ``shots`` are the production entry point.  Keeping the
+    original positional pilot interface preserves the regression/debug command
+    while ensuring the full-movie runner never needs a pilot window artifact.
+    """
+    root=input_dir.resolve().parents[1]; movie_id=input_dir.name; run=root/'runs'/movie_id; pilot=run/'broll-pilot-v1'/window_id; candidates_path=pilot/'candidates.json'
+    if candidates is None:
+        candidates=json.loads(candidates_path.read_text()).get('candidates',[])
+    else:
+        # Only an owned, bounded scratch path is needed for legacy cleanup of a
+        # former pilot export; it is never a source of production pixels.
+        pilot=run/'.work'/'production-finalization'; pilot.mkdir(parents=True,exist_ok=True)
+        candidates_path=pilot/'candidates.json'
+    assets=run/'assets'; assets.mkdir(parents=True,exist_ok=True); _remove_incomplete_assets(assets); work=run/'.work'; work.mkdir(parents=True,exist_ok=True); review_dir=run/'review'
+    if shots is None:
+        shots_path=run/'visual-smoke-v1'/'shots.jsonl'; shots={x['shot_id']:x for x in (json.loads(y) for y in shots_path.read_text().splitlines() if y.strip())} if shots_path.exists() else {}
     # Finalize is self-healing: stale event semantics are refreshed through the
     # existing bounded event request, never by silently using unclear geometry.
     from .broll_pilot import semantic_validate, shot_focus_compatible

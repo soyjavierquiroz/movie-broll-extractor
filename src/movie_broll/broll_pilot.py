@@ -296,7 +296,7 @@ def _legacy_provider_response_failure(stage:dict[str,Any])->bool:
     return (stage.get('status') == 'FAILED_FINAL' and not stage.get('failure_kind')
             and stage.get('error') == 'incomplete or mismatched shot focus plan')
 
-def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative:Path, checkpoint_dir:Path, fps:float, window_id:str, provider:SemanticProvider|None=None, model:str='gemini-3.6-flash')->dict[str,Any]:
+def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative:Path, checkpoint_dir:Path, fps:float, window_id:str, provider:SemanticProvider|None=None, model:str='gemini-3.6-flash', preserve_event_ids:bool=False)->dict[str,Any]:
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parents[2]/'.env'); key=os.getenv('GEMINI_API_KEY')
     active=provider or (GeminiBrollSemanticProvider(key,model) if key else None); cues=parse_srt_file(srt).cues; segments=json.loads(narrative.read_text()).get('segments',[]); checkpoint_dir.mkdir(parents=True,exist_ok=True); usage={'prompt_tokens':0,'response_tokens':0,'thinking_tokens':0,'cached_tokens':0,'total_tokens':0}; reused=requests=0; quota=False; failed=0
@@ -308,7 +308,8 @@ def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative
     ledger=ProcessingLedger(movie_run,movie_id,{'movie_sha256':sha256_file(movie),'srt_sha256':sha256_file(srt),'narrative_sha256':sha256_file(narrative),'semantic_schema_version':SEMANTIC_SCHEMA_VERSION,'semantic_prompt_version':SEMANTIC_PROMPT_VERSION,'provider':active.identifier if active else 'unavailable','model':model})
     for ordinal,c in enumerate(items,1): # every visual event is eligible, irrespective of structural rank.
         # Never let an ordinal-only legacy ID address movie-wide ledger state.
-        c['visual_event_id']=pilot_event_id(window_id,ordinal)
+        if not preserve_event_ids:
+            c['visual_event_id']=pilot_event_id(window_id,ordinal)
         c['narrative']=_narrative_context(segments,c['start_seconds'],c['end_seconds']); c['srt_context']=_cue_context(cues,c['start_seconds'],c['end_seconds']); cp=checkpoint_dir/f"{c['candidate_id']}.json"
         # A checkpoint's identity plus the event/config fingerprint is the reuse key.
         event_fp=fingerprint({'range':[c['start_frame'],c['end_frame_exclusive']],'shots':c['source_shot_ids'],'event_type_hint':c.get('event_type_hint'),'inputs':ledger.data['inputs'],'window_id':window_id})
