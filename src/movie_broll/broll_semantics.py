@@ -106,10 +106,26 @@ class GeminiProviderPoolError(RuntimeError):
             x.get("reason") == "quota_exceeded"
             for x in self.failures
         )
+        auth_only = bool(self.failures) and all(
+            x.get("reason") == "auth_error"
+            for x in self.failures
+        )
 
         self.quota_exhausted = quota_only
-        self.reason = "quota_exceeded" if quota_only else "provider_unavailable"
-        self.retryable = any(bool(x.get("retryable")) for x in self.failures)
+
+        if quota_only:
+            self.reason = "quota_exceeded"
+        elif auth_only:
+            self.reason = "auth_error"
+        else:
+            self.reason = "provider_unavailable"
+
+        # Auth is not retryable against the same credential, but the
+        # production job itself is resume-safe after credentials are fixed.
+        self.retryable = (
+            auth_only
+            or any(bool(x.get("retryable")) for x in self.failures)
+        )
 
         retry_values = [
             float(x["retry_after_seconds"])
@@ -263,6 +279,7 @@ class GeminiProviderPool:
                 "provider": provider,
                 "cooldown_until": 0.0,
                 "last_failure": None,
+                "disabled": False,
             }
             for provider in primaries
         ]
@@ -271,6 +288,7 @@ class GeminiProviderPool:
                 "provider": backup,
                 "cooldown_until": 0.0,
                 "last_failure": None,
+                "disabled": False,
             }
             if backup is not None
             else None
@@ -325,6 +343,22 @@ class GeminiProviderPool:
                 attempted=True,
             )
 
+            if detail["reason"] == "auth_error":
+                member["disabled"] = True
+                member["last_failure"] = dict(detail)
+
+                self._log(
+                    "[gemini-pool] "
+                    f"event={context.get('visual_event_id') or context.get('candidate_id', '?')} "
+                    f"provider={provider.identifier} "
+                    f"attempt={attempt} "
+                    f"status={detail.get('http_status')} "
+                    "reason=auth_error "
+                    "action=DISABLE"
+                )
+
+                return None, detail
+
             if not detail["retryable"]:
                 raise
 
@@ -369,6 +403,14 @@ class GeminiProviderPool:
             for index in order:
                 member = self.primaries[index]
 
+                if member.get("disabled"):
+                    previous = member.get("last_failure")
+                    if previous:
+                        current = dict(previous)
+                        current["attempted"] = False
+                        failures.append(current)
+                    continue
+
                 if member["cooldown_until"] > now:
                     previous = member.get("last_failure")
                     if previous:
@@ -410,7 +452,14 @@ class GeminiProviderPool:
             member = self.backup
             now = self.clock()
 
-            if member["cooldown_until"] <= now:
+            if member.get("disabled"):
+                previous = member.get("last_failure")
+                if previous:
+                    current = dict(previous)
+                    current["attempted"] = False
+                    failures.append(current)
+
+            elif member["cooldown_until"] <= now:
                 response, detail = self._try_member(
                     member,
                     prompt,

@@ -323,6 +323,24 @@ def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative
             c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':semantic_stage['error']}; continue
         if response is not None:
             c['visual']=response['visual']; c['people']=response['visual']['people']; c['relationships']=response['relationships']; c['editorial']={**response['editorial'],'status':'VALIDATED'}; continue
+        if (
+            semantic_stage.get('status') == 'FAILED_FINAL'
+            and semantic_stage.get('failure_kind') == 'auth_error'
+        ):
+            ledger.stage(
+                c['visual_event_id'],
+                'semantic',
+                'FAILED_RETRYABLE',
+                error=semantic_stage.get('error'),
+                failure_kind='auth_error',
+                provider=semantic_stage.get('provider'),
+                model=semantic_stage.get('model', model),
+                http_status=semantic_stage.get('http_status'),
+                retryable=True,
+                candidate_fingerprint=event_fp,
+            )
+            semantic_stage = record['stages']['semantic']
+
         if semantic_stage.get('status') == 'FAILED_FINAL':
             c['visual']={}; c['editorial']={'decision':'REVIEW','status':'SEMANTIC_INCOMPLETE','reason':str(semantic_stage.get('error','semantic validation failed'))}; continue
         elif quota or unavailable:

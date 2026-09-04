@@ -263,3 +263,104 @@ def test_cooldown_skip_counts_zero_actual_requests():
         "event=VE_REAL_0012" in line
         for line in lines
     )
+
+
+
+def test_auth_error_disables_member_and_fails_over_same_request():
+    from movie_broll.broll_semantics import SemanticResponse
+
+    class Provider:
+        model = "gemini-3.6-flash"
+
+        def __init__(self, identifier, auth_fail=False):
+            self.identifier = identifier
+            self.auth_fail = auth_fail
+            self.calls = 0
+
+        def generate(self, *args):
+            self.calls += 1
+
+            if self.auth_fail:
+                raise RuntimeError("Error code: 401 invalid API key")
+
+            return SemanticResponse(
+                {"ok": True},
+                {},
+            )
+
+    bad = Provider("gemini-primary-1", auth_fail=True)
+    good = Provider("gemini-primary-2")
+
+    lines = []
+
+    pool = GeminiProviderPool(
+        [bad, good],
+        reporter=lines.append,
+    )
+
+    response = pool.generate(
+        "prompt",
+        {
+            "candidate_id": "BRC_AUTH",
+            "visual_event_id": "VE_AUTH",
+        },
+        b"jpg",
+    )
+
+    assert response.provider == "gemini-primary-2"
+    assert response.attempts == 2
+    assert bad.calls == 1
+    assert good.calls == 1
+
+    assert any(
+        "provider=gemini-primary-1" in line
+        and "reason=auth_error" in line
+        and "action=DISABLE" in line
+        for line in lines
+    )
+
+    # Next logical request must skip bad credential completely.
+    response2 = pool.generate(
+        "prompt",
+        {
+            "candidate_id": "BRC_NEXT",
+            "visual_event_id": "VE_NEXT",
+        },
+        b"jpg",
+    )
+
+    assert response2.provider == "gemini-primary-2"
+    assert bad.calls == 1
+    assert good.calls == 2
+
+
+def test_all_auth_failures_are_resume_safe_pool_failure():
+    class BadProvider:
+        model = "gemini-3.6-flash"
+
+        def __init__(self, identifier):
+            self.identifier = identifier
+
+        def generate(self, *args):
+            raise RuntimeError("Error code: 401 invalid API key")
+
+    pool = GeminiProviderPool(
+        [
+            BadProvider("gemini-primary-1"),
+            BadProvider("gemini-primary-2"),
+        ]
+    )
+
+    try:
+        pool.generate(
+            "prompt",
+            {"visual_event_id": "VE_AUTH_ALL"},
+            b"jpg",
+        )
+    except GeminiProviderPoolError as error:
+        assert error.reason == "auth_error"
+        assert error.retryable is True
+        assert error.quota_exhausted is False
+        assert error.attempts == 2
+    else:
+        raise AssertionError("expected GeminiProviderPoolError")
