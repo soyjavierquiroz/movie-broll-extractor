@@ -18,6 +18,7 @@ RELATIONSHIP_SOURCES = ["visual", "srt", "narrative", "combined"]
 DECISIONS = ["KEEP", "REVIEW", "REJECT"]
 FOCUS_SUBJECTS = ["woman", "man", "multiple_people", "action_region", "environment", "unclear"]
 INTERACTION_REQUIREMENTS = ["none", "sequence", "simultaneous", "unclear"]
+TARGET_BINDING_CONFIDENCE = ["high", "medium", "low", "unclear"]
 
 SEMANTIC_SCHEMA: dict[str, Any] = {"type": "object", "properties": {
     "visual": {"type": "object", "properties": {
@@ -34,7 +35,9 @@ SEMANTIC_SCHEMA: dict[str, Any] = {"type": "object", "properties": {
         }, "required": ["presentation", "apparent_age_group", "frame_role", "position"]}},
         "primary_subject_position": {"type": "string", "enum": POSITIONS}, "primary_subject_description": {"type": "string"}, "visual_focus": {"type": "string"},
         "shot_focus_plan": {"type": "array", "items": {"type": "object", "properties": {
-            "shot_id": {"type": "string"}, "focus_subject": {"type": "string", "enum": FOCUS_SUBJECTS}, "focus_reason": {"type": "string"}, "preserve_secondary_subject": {"type": "boolean"}, "interaction_requirement": {"type": "string", "enum": INTERACTION_REQUIREMENTS}, "focus_position": {"type": "string", "enum": POSITIONS}
+            "shot_id": {"type": "string"}, "focus_subject": {"type": "string", "enum": FOCUS_SUBJECTS}, "focus_reason": {"type": "string"}, "preserve_secondary_subject": {"type": "boolean"}, "interaction_requirement": {"type": "string", "enum": INTERACTION_REQUIREMENTS}, "focus_position": {"type": "string", "enum": POSITIONS},
+            "target_person_ids": {"type": "array", "items": {"type": "string"}},
+            "target_binding_confidence": {"type": "string", "enum": TARGET_BINDING_CONFIDENCE}
         }, "required": ["shot_id", "focus_subject", "focus_reason", "preserve_secondary_subject", "interaction_requirement", "focus_position"]}},
     }, "required": ["summary_es", "subjects", "objects", "actions", "people_count_estimate", "setting", "visible_interactions", "visible_emotions", "people", "primary_subject_position", "primary_subject_description", "visual_focus", "shot_focus_plan"]},
     "relationships": {"type": "array", "items": {"type": "object", "properties": {
@@ -565,6 +568,13 @@ def validate_response(data: dict[str, Any]) -> list[str]:
     if visual.get("primary_subject_position") not in POSITIONS: errors.append("invalid subject position")
     plan=visual.get('shot_focus_plan', [])
     if plan and (not isinstance(plan,list) or any(not isinstance(x,dict) or x.get('focus_subject') not in FOCUS_SUBJECTS or x.get('interaction_requirement') not in INTERACTION_REQUIREMENTS or x.get('focus_position') not in POSITIONS or not all(k in x for k in ('shot_id','focus_reason','preserve_secondary_subject')) for x in plan)): errors.append('invalid shot focus plan')
+    if isinstance(plan,list):
+        for directive in plan:
+            if not isinstance(directive,dict): continue
+            if 'target_person_ids' in directive:
+                ids=directive.get('target_person_ids')
+                if not isinstance(ids,list) or any(not isinstance(x,str) for x in ids) or len(ids)!=len(set(ids)): errors.append('invalid target person ids')
+            if 'target_binding_confidence' in directive and directive.get('target_binding_confidence') not in TARGET_BINDING_CONFIDENCE: errors.append('invalid target binding confidence')
     for person in visual.get("people", []):
         if not isinstance(person, dict) or person.get("presentation") not in PRESENTATIONS: errors.append("invalid person presentation")
         elif person.get("apparent_age_group") not in AGE_GROUPS: errors.append("invalid person age group")

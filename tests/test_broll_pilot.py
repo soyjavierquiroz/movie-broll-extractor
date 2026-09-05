@@ -453,3 +453,146 @@ def test_pool_exhaustion_returns_partial_quota_with_failure(monkeypatch,tmp_path
         'gemini-primary-3',
         'gemini-backup',
     ]
+
+
+
+def test_person_candidate_ids_are_deterministic_left_to_right():
+    import movie_broll.broll_pilot as b
+
+    found=[
+        {'detector':'yolo_person','confidence':.9,'bbox':{'x':700,'y':20,'width':100,'height':300}},
+        {'detector':'yolo_person','confidence':.8,'bbox':{'x':100,'y':30,'width':120,'height':280}},
+        {'detector':'haar_face','confidence':1.0,'bbox':{'x':150,'y':40,'width':40,'height':40}},
+    ]
+
+    rows=b._person_candidates(found,1000,500)
+
+    assert [x['person_id'] for x in rows] == ['P1','P2']
+    assert [x['bbox']['x'] for x in rows] == [100.0,700.0]
+    assert [x['position'] for x in rows] == ['left','right']
+
+
+def test_semantic_target_binding_uses_shot_local_person_ids(monkeypatch,tmp_path):
+    import movie_broll.broll_pilot as b
+    from movie_broll.broll_semantics import SemanticResponse
+
+    movie,srt,narrative=_semantic_files(tmp_path)
+    captured={}
+
+    def fake_sheet(movie,c,fps,evidence):
+        evidence.update({
+            'version':'semantic_target_binding_v1',
+            'technical_shots':[{
+                'shot_id':'S1',
+                'reference_frame':15,
+                'reference_time_seconds':.625,
+                'candidates':[
+                    {'person_id':'P1'},
+                    {'person_id':'P2'},
+                ],
+            }],
+        })
+        return b'jpg'
+
+    monkeypatch.setattr(b,'candidate_contact_sheet',fake_sheet)
+
+    class Provider:
+        identifier='fake'
+        model='fake'
+
+        def generate(self,prompt,context,jpeg):
+            captured['context']=context
+            data=_semantic()
+            directive=data['visual']['shot_focus_plan'][0]
+            directive['shot_id']='S1'
+            directive['focus_subject']='woman'
+            directive['focus_position']='left'
+            directive['target_person_ids']=['P2']
+            directive['target_binding_confidence']='high'
+            return SemanticResponse(
+                data,
+                {
+                    'prompt_tokens':0,
+                    'response_tokens':0,
+                    'thinking_tokens':0,
+                    'cached_tokens':0,
+                    'total_tokens':0,
+                },
+            )
+
+    item=_semantic_item(source_shot_id='S1')
+    report=b.semantic_validate(
+        [item],
+        movie,
+        srt,
+        narrative,
+        tmp_path/'broll-pilot-v1'/'SW_06'/'semantic_checkpoints',
+        24,
+        'SW_06',
+        Provider(),
+    )
+
+    assert report['complete'] == 1
+    directive=item['visual']['shot_focus_plan'][0]
+    assert directive['target_person_ids'] == ['P2']
+    assert directive['target_binding_confidence'] == 'high'
+    assert captured['context']['target_binding_version'] == 'semantic_target_binding_v1'
+    assert captured['context']['person_candidates'][0]['shot_id'] == 'S1'
+
+
+def test_semantic_target_binding_rejects_unknown_person_id(monkeypatch,tmp_path):
+    import movie_broll.broll_pilot as b
+    from movie_broll.broll_semantics import SemanticResponse
+
+    movie,srt,narrative=_semantic_files(tmp_path)
+
+    def fake_sheet(movie,c,fps,evidence):
+        evidence.update({
+            'version':'semantic_target_binding_v1',
+            'technical_shots':[{
+                'shot_id':'S1',
+                'reference_frame':15,
+                'reference_time_seconds':.625,
+                'candidates':[{'person_id':'P1'}],
+            }],
+        })
+        return b'jpg'
+
+    monkeypatch.setattr(b,'candidate_contact_sheet',fake_sheet)
+
+    class Provider:
+        identifier='fake'
+        model='fake'
+
+        def generate(self,prompt,context,jpeg):
+            data=_semantic()
+            directive=data['visual']['shot_focus_plan'][0]
+            directive['shot_id']='S1'
+            directive['focus_subject']='woman'
+            directive['focus_position']='left'
+            directive['target_person_ids']=['P9']
+            directive['target_binding_confidence']='high'
+            return SemanticResponse(
+                data,
+                {
+                    'prompt_tokens':0,
+                    'response_tokens':0,
+                    'thinking_tokens':0,
+                    'cached_tokens':0,
+                    'total_tokens':0,
+                },
+            )
+
+    report=b.semantic_validate(
+        [_semantic_item(source_shot_id='S1')],
+        movie,
+        srt,
+        narrative,
+        tmp_path/'broll-pilot-v1'/'SW_06'/'semantic_checkpoints',
+        24,
+        'SW_06',
+        Provider(),
+    )
+
+    assert report['semantic_failed_retryable'] == 1
+    assert report['complete'] == 0

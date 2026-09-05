@@ -8,10 +8,11 @@ import numpy as np
 from .srt import parse_srt_file
 from .utils import write_json, sha256_file
 from .processing_ledger import ProcessingLedger, fingerprint
-from .broll_semantics import (PROMPT as SEMANTIC_PROMPT, SemanticProvider, FOCUS_SUBJECTS, INTERACTION_REQUIREMENTS, validate_response, build_gemini_provider_from_env, classify_provider_error)
+from .broll_semantics import (PROMPT as SEMANTIC_PROMPT, SemanticProvider, FOCUS_SUBJECTS, INTERACTION_REQUIREMENTS, TARGET_BINDING_CONFIDENCE, validate_response, build_gemini_provider_from_env, classify_provider_error)
 
 PILOT_WINDOW="SW_02"; SAMPLE_FPS=3.0; KEEP=70; REVIEW=50
 SEMANTIC_SCHEMA_VERSION="broll_semantics_v6"; SEMANTIC_PROMPT_VERSION="broll_semantic_prompt_v6"
+TARGET_BINDING_VERSION="semantic_target_binding_v1"
 STRUCTURAL_SCORING_VERSION="visual_event_duration_v1"
 MAX_PROVIDER_RESPONSE_ATTEMPTS=2
 
@@ -223,23 +224,172 @@ def _narrative_context(segments:list[dict[str,Any]], start:float,end:float)->dic
     def collect(*names:str)->list[Any]: return [v for x in selected for name in names for v in _field_values(x.get(name))]
     return {'segment_ids':[x['segment_id'] for x in selected], 'summary_es':collect('narrative_summary_es','narrative_summary','summary_es'), 'tone':collect('narrative_tone','tone'), 'themes':collect('themes'), 'interaction_context':collect('interaction_context','narrative_function'), 'literal_transcription':False}
 
-def candidate_contact_sheet(movie:Path,c:dict[str,Any],fps:float)->bytes:
-    """Bounded representative frames, labelled with technical-shot identity/order."""
-    start,end=int(c['start_frame']),int(c['end_frame_exclusive']); technical=c.get('technical_shots',[])
-    if technical:
-        selected=technical if len(technical)<=8 else [technical[round(i*(len(technical)-1)/7)] for i in range(8)]
-        labelled=[(str(x['shot_id']),round(((float(x['start_seconds'])+float(x['end_seconds']))/2)*fps)) for x in selected]
-    else:
-        positions=[start, start+(end-start)//4, start+(end-start)//2, start+3*(end-start)//4, end-1]; labelled=[(f'SHOT {i+1}',p) for i,p in enumerate(positions)]
-    cap=cv2.VideoCapture(str(movie)); frames=[]
-    for label,frame_no in labelled:
-        cap.set(cv2.CAP_PROP_POS_FRAMES,frame_no); ok,frame=cap.read()
-        if not ok: cap.release(); raise RuntimeError(f"cannot decode candidate frame {frame_no}")
-        frame=cv2.resize(frame,(320,180)); cv2.putText(frame,label,(8,20),cv2.FONT_HERSHEY_SIMPLEX,.5,(255,255,255),1,cv2.LINE_AA); frames.append(frame)
-    cap.release(); ok, encoded=cv2.imencode('.jpg',cv2.hconcat(frames),[cv2.IMWRITE_JPEG_QUALITY,85])
-    if not ok: raise RuntimeError('cannot encode candidate contact sheet')
-    return encoded.tobytes()
+def _person_candidates(found:list[dict[str,Any]], width:int, height:int)->list[dict[str,Any]]:
+    """Expose finalization's canonical shot-local P1/P2/... ordering."""
+    from .finalization import _binding_candidates
 
+    result=[]
+    for item in _binding_candidates(found,width):
+        box=item['box']
+        center=box['x']+box['width']/2
+        original=next(
+            (
+                row for row in found
+                if row.get('detector')=='yolo_person'
+                and _approximately_same_bbox(row.get('bbox',row),box)
+            ),
+            {},
+        )
+        result.append({
+            'person_id':item['person_id'],
+            'bbox':{
+                'x':round(box['x'],3),
+                'y':round(box['y'],3),
+                'width':round(box['width'],3),
+                'height':round(box['height'],3),
+            },
+            'bbox_normalized':{
+                'x':round(box['x']/max(1,width),5),
+                'y':round(box['y']/max(1,height),5),
+                'width':round(box['width']/max(1,width),5),
+                'height':round(box['height']/max(1,height),5),
+            },
+            'confidence':round(float(original.get('confidence',0.)),5),
+            'position':(
+                'left' if center < width*.40
+                else 'right' if center > width*.60
+                else 'center'
+            ),
+        })
+    return result
+
+
+def _approximately_same_bbox(a:dict[str,Any],b:dict[str,Any])->bool:
+    try:
+        return all(
+            abs(float(a[key])-float(b[key])) < .01
+            for key in ('x','y','width','height')
+        )
+    except (KeyError,TypeError,ValueError):
+        return False
+def candidate_contact_sheet(movie:Path,c:dict[str,Any],fps:float,evidence:dict[str,Any]|None=None)->bytes:
+    """Representative technical-shot frames with deterministic local person IDs."""
+    start,end=int(c['start_frame']),int(c['end_frame_exclusive'])
+    technical=c.get('technical_shots',[])
+
+    # Every technical shot represented in the semantic request must be visible.
+    # P1/P2/... identities are local to one technical shot and restart after cuts.
+    if technical:
+        selected=technical
+        labelled=[
+            (
+                str(x['shot_id']),
+                round(((float(x['start_seconds'])+float(x['end_seconds']))/2)*fps),
+            )
+            for x in selected
+        ]
+    else:
+        positions=[
+            start,
+            start+(end-start)//4,
+            start+(end-start)//2,
+            start+3*(end-start)//4,
+            end-1,
+        ]
+        labelled=[(f'SHOT {i+1}',p) for i,p in enumerate(positions)]
+
+    # Person geometry is local evidence only.  It does NOT decide editorial focus.
+    # Gemini binds editorial intent to one of these visible IDs.
+    from .finalization import person_detector_preflight, detect_people
+    person_detector_preflight()
+
+    cap=cv2.VideoCapture(str(movie))
+    frames=[]
+    evidence_rows=[]
+
+    for label,frame_no in labelled:
+        cap.set(cv2.CAP_PROP_POS_FRAMES,frame_no)
+        ok,frame=cap.read()
+        if not ok:
+            cap.release()
+            raise RuntimeError(f"cannot decode candidate frame {frame_no}")
+
+        source_h,source_w=frame.shape[:2]
+        candidates=_person_candidates(detect_people(frame),source_w,source_h)
+
+        evidence_rows.append({
+            'shot_id':label,
+            'reference_frame':int(frame_no),
+            'reference_time_seconds':round(float(frame_no)/fps,4),
+            'candidates':candidates,
+        })
+
+        # Preserve source aspect ratio.  1920x800 becomes 480x200, not 320x180.
+        tile_w=480
+        tile_h=max(1,round(source_h*tile_w/source_w))
+        tile=cv2.resize(frame,(tile_w,tile_h))
+        sx=tile_w/source_w
+        sy=tile_h/source_h
+
+        for person in candidates:
+            box=person['bbox']
+            x1=max(0,min(tile_w-1,round(box['x']*sx)))
+            y1=max(0,min(tile_h-1,round(box['y']*sy)))
+            x2=max(0,min(tile_w-1,round((box['x']+box['width'])*sx)))
+            y2=max(0,min(tile_h-1,round((box['y']+box['height'])*sy)))
+            cv2.rectangle(tile,(x1,y1),(x2,y2),(255,255,255),1)
+            cv2.putText(
+                tile,
+                person['person_id'],
+                (x1,max(14,y1+14)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                .48,
+                (255,255,255),
+                1,
+                cv2.LINE_AA,
+            )
+
+        cv2.putText(
+            tile,
+            label,
+            (8,20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            .5,
+            (255,255,255),
+            1,
+            cv2.LINE_AA,
+        )
+        frames.append(tile)
+
+    cap.release()
+
+    if not frames:
+        raise RuntimeError('cannot create candidate contact sheet')
+
+    # A bounded grid remains readable when an event contains more than 8 shots.
+    cols=min(4,len(frames))
+    blank=np.zeros_like(frames[0])
+    frames += [blank]*((-len(frames))%cols)
+    sheet=cv2.vconcat([
+        cv2.hconcat(frames[i:i+cols])
+        for i in range(0,len(frames),cols)
+    ])
+
+    if evidence is not None:
+        evidence.clear()
+        evidence.update({
+            'version':TARGET_BINDING_VERSION,
+            'technical_shots':evidence_rows,
+        })
+
+    ok,encoded=cv2.imencode(
+        '.jpg',
+        sheet,
+        [cv2.IMWRITE_JPEG_QUALITY,88],
+    )
+    if not ok:
+        raise RuntimeError('cannot encode candidate contact sheet')
+    return encoded.tobytes()
 def boundary_validation(movie:Path, exported:Path, c:dict[str,Any])->dict[str,Any]:
     """Authoritatively reject an export whose boundary provenance is wrong."""
     source=cv2.VideoCapture(str(movie)); result={'candidate_id':c['candidate_id'],'source_frame_immediately_before':int(c['start_frame'])-1,'source_first_frame':int(c['start_frame']),'source_last_candidate_frame':int(c['end_frame_exclusive'])-1,'source_frame_immediately_after':int(c['end_frame_exclusive'])}
@@ -279,6 +429,72 @@ def shot_focus_compatible(response:dict[str,Any],candidate:dict[str,Any])->bool:
     if not isinstance(plan,list) or len(plan)!=len(expected): return False
     ids=[x.get('shot_id') for x in plan if isinstance(x,dict)]
     return len(ids)==len(expected) and set(ids)==set(expected) and len(set(ids))==len(ids) and all(x.get('focus_subject') in FOCUS_SUBJECTS and x.get('interaction_requirement') in INTERACTION_REQUIREMENTS and (x.get('focus_subject') not in {'woman','man','multiple_people'} or x.get('focus_position') in {'left','center','right'}) for x in plan)
+
+def target_binding_compatible(response:dict[str,Any],candidate:dict[str,Any],evidence:dict[str,Any])->bool:
+    """Validate shot-local semantic target IDs against the exact labelled detections Gemini saw."""
+    evidence_shots=evidence.get('technical_shots',[]) if isinstance(evidence,dict) else []
+    if not evidence_shots:
+        # Backward compatibility for old checkpoints/tests with no binding evidence.
+        return True
+
+    available={
+        str(row.get('shot_id')):{
+            str(x.get('person_id'))
+            for x in row.get('candidates',[])
+            if isinstance(x,dict) and x.get('person_id')
+        }
+        for row in evidence_shots
+        if isinstance(row,dict)
+    }
+
+    plan=response.get('visual',{}).get('shot_focus_plan',[])
+    if not isinstance(plan,list):
+        return False
+
+    for directive in plan:
+        if not isinstance(directive,dict):
+            return False
+
+        shot_id=str(directive.get('shot_id'))
+        if shot_id not in available:
+            return False
+
+        ids=directive.get('target_person_ids')
+        confidence=directive.get('target_binding_confidence')
+
+        if not isinstance(ids,list) or any(not isinstance(x,str) for x in ids):
+            return False
+        if len(ids)!=len(set(ids)):
+            return False
+        if confidence not in TARGET_BINDING_CONFIDENCE:
+            return False
+
+        valid=available[shot_id]
+        if any(x not in valid for x in ids):
+            return False
+
+        focus=directive.get('focus_subject')
+        human=focus in {'woman','man','multiple_people'}
+
+        if not human:
+            if ids:
+                return False
+            continue
+
+        if not ids:
+            # If people were detected but Gemini cannot bind the requested
+            # semantic target, uncertainty must be explicit rather than guessed.
+            if valid and confidence != 'unclear':
+                return False
+            continue
+
+        if focus in {'woman','man'} and len(ids)!=1:
+            return False
+
+        if focus=='multiple_people' and len(ids)<2:
+            return False
+
+    return True
 
 def _quota_error(error: Exception) -> bool:
     return bool(classify_provider_error(error).get('quota_exhausted'))
@@ -356,7 +572,40 @@ def semantic_validate(items:list[dict[str,Any]], movie:Path, srt:Path, narrative
         else:
             try:
                 ledger.stage(c['visual_event_id'],'semantic','RUNNING',model=model,candidate_fingerprint=event_fp)
-                sheet=candidate_contact_sheet(movie,c,fps); response_obj=active.generate(SEMANTIC_PROMPT,{'window_id':window_id,'candidate_id':c['candidate_id'],'visual_event_id':c['visual_event_id'],'candidate_identity':{'window_id':window_id,'candidate_id':c['candidate_id'],'start_frame':c['start_frame'],'end_frame_exclusive':c['end_frame_exclusive']},'source_shot_ids':c['source_shot_ids'],'technical_shots':c.get('technical_shots',[]),'narrative':c['narrative'],'srt_context':c['srt_context'],'instruction':'Images are visual authority. technical_shots and labelled image order map deterministically: representative_image_index is its zero-based position. Return exactly one shot_focus_plan directive for each listed technical shot; this is the same event request, never a request per shot.'},sheet); errors=validate_response(response_obj.data)
+                evidence={}
+                sheet=candidate_contact_sheet(movie,c,fps,evidence)
+                context={
+                    'window_id':window_id,
+                    'candidate_id':c['candidate_id'],
+                    'visual_event_id':c['visual_event_id'],
+                    'candidate_identity':{
+                        'window_id':window_id,
+                        'candidate_id':c['candidate_id'],
+                        'start_frame':c['start_frame'],
+                        'end_frame_exclusive':c['end_frame_exclusive'],
+                    },
+                    'source_shot_ids':c['source_shot_ids'],
+                    'technical_shots':c.get('technical_shots',[]),
+                    'narrative':c['narrative'],
+                    'srt_context':c['srt_context'],
+                    'target_binding_version':TARGET_BINDING_VERSION,
+                    'person_candidates':evidence.get('technical_shots',[]),
+                    'instruction':(
+                        'Images are visual authority. technical_shots and labelled image order map deterministically. '
+                        'P1/P2/... labels are shot-local detected people and restart for every technical shot. '
+                        'For every shot_focus_plan directive return target_person_ids and target_binding_confidence. '
+                        'The editorially important subject must be bound only to IDs visibly labelled in that same shot. '
+                        'Do not treat the largest box, nearest face, or highest detector confidence as automatically primary. '
+                        'For woman/man use at most one target ID. For multiple_people use the required visible people. '
+                        'For action_region/environment/unclear return an empty target_person_ids list. '
+                        'If the intended human subject cannot be confidently matched to a labelled person, return [] with target_binding_confidence=unclear. '
+                        'Return exactly one shot_focus_plan directive for each listed technical shot; this is one event request, never one request per shot.'
+                    ),
+                }
+                response_obj=active.generate(SEMANTIC_PROMPT,context,sheet)
+                errors=validate_response(response_obj.data)
+                if not shot_focus_compatible(response_obj.data,c): errors.append('incomplete or mismatched shot focus plan')
+                if not target_binding_compatible(response_obj.data,c,evidence): errors.append('invalid or mismatched semantic target binding')
                 if not shot_focus_compatible(response_obj.data,c): errors.append('incomplete or mismatched shot focus plan')
                 if errors: raise ProviderResponseValidationError('; '.join(errors))
                 response=response_obj.data

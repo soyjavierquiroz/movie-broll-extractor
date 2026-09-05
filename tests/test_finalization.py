@@ -610,3 +610,210 @@ def test_complete_package_promotion_publishes_exactly_five(tmp_path):
 
     assert sorted(x.name for x in assets.iterdir())==sorted(names)
     assert all(x.is_file() for x in final)
+
+
+
+def test_semantic_bound_subject_starts_from_requested_person_id(monkeypatch,tmp_path):
+    import numpy as np
+    import movie_broll.finalization as f
+
+    samples=[
+        (1.12,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.31,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.50,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.69,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.88,np.zeros((120,160,3),dtype=np.uint8)),
+    ]
+    monkeypatch.setattr(f,'_sample_frames',lambda *args,**kwargs:samples)
+
+    detections=[
+        [
+            {'detector':'yolo_person','confidence':.9,'bbox':{'x':10,'y':10,'width':25,'height':90}},
+            {'detector':'yolo_person','confidence':.9,'bbox':{'x':105,'y':10,'width':25,'height':90}},
+        ],
+        [
+            {'detector':'yolo_person','confidence':.9,'bbox':{'x':15,'y':10,'width':25,'height':90}},
+            {'detector':'yolo_person','confidence':.9,'bbox':{'x':100,'y':10,'width':25,'height':90}},
+        ],
+        [
+            {'detector':'yolo_person','confidence':.9,'bbox':{'x':20,'y':10,'width':25,'height':90}},
+            {'detector':'yolo_person','confidence':.9,'bbox':{'x':95,'y':10,'width':25,'height':90}},
+        ],
+        [
+            {'detector':'yolo_person','confidence':.9,'bbox':{'x':25,'y':10,'width':25,'height':90}},
+            {'detector':'yolo_person','confidence':.9,'bbox':{'x':90,'y':10,'width':25,'height':90}},
+        ],
+        [
+            {'detector':'yolo_person','confidence':.9,'bbox':{'x':30,'y':10,'width':25,'height':90}},
+            {'detector':'yolo_person','confidence':.9,'bbox':{'x':85,'y':10,'width':25,'height':90}},
+        ],
+    ]
+    calls=iter(detections)
+
+    event={
+        'visual_event_id':'VE_BIND',
+        'start_seconds':1.0,
+        'end_seconds':2.0,
+        'start_frame':24,
+        'end_frame_exclusive':48,
+        'source_shot_ids':['S1'],
+        'visual':{
+            'primary_subject_position':'left',
+            'shot_focus_plan':[{
+                'shot_id':'S1',
+                'focus_subject':'woman',
+                'focus_position':'left',
+                'focus_role':'primary',
+                'focus_reason':'editorially select the right-hand detected person',
+                'preserve_secondary_subject':False,
+                'interaction_requirement':'none',
+                'target_person_ids':['P2'],
+                'target_binding_confidence':'high',
+            }],
+        },
+    }
+
+    plan=f.build_shot_crop_plan(
+        tmp_path/'movie.mp4',
+        event,
+        {'S1':{'start_seconds':1.0,'end_seconds':2.0}},
+        160,
+        120,
+        detector=lambda _:next(calls),
+        sample_count=5,
+    )
+
+    rule=plan[0]
+
+    assert rule['target_person_ids']==['P2']
+    assert rule['target_binding_resolved'] is True
+    assert rule['tracking']['mode']=='semantic_bound_geometry'
+
+    # P2 is the right-hand person even though focus_position intentionally says left.
+    assert rule['focus_bbox']['x'] >= 85
+    assert not rule['review_required']
+
+
+def test_semantic_bound_subject_never_silently_switches_to_other_person(monkeypatch,tmp_path):
+    import numpy as np
+    import movie_broll.finalization as f
+
+    samples=[
+        (1.12,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.31,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.50,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.69,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.88,np.zeros((120,160,3),dtype=np.uint8)),
+    ]
+    monkeypatch.setattr(f,'_sample_frames',lambda *args,**kwargs:samples)
+
+    detections=[
+        [{'detector':'yolo_person','confidence':.9,'bbox':{'x':95,'y':10,'width':25,'height':90}}],
+        [{'detector':'yolo_person','confidence':.9,'bbox':{'x':95,'y':10,'width':25,'height':90}}],
+        [
+            {'detector':'yolo_person','confidence':.9,'bbox':{'x':15,'y':10,'width':25,'height':90}},
+            {'detector':'yolo_person','confidence':.9,'bbox':{'x':95,'y':10,'width':25,'height':90}},
+        ],
+        [{'detector':'yolo_person','confidence':.9,'bbox':{'x':15,'y':10,'width':25,'height':90}}],
+        [{'detector':'yolo_person','confidence':.9,'bbox':{'x':15,'y':10,'width':25,'height':90}}],
+    ]
+    calls=iter(detections)
+
+    event={
+        'visual_event_id':'VE_LOST',
+        'start_seconds':1.0,
+        'end_seconds':2.0,
+        'start_frame':24,
+        'end_frame_exclusive':48,
+        'source_shot_ids':['S1'],
+        'visual':{
+            'primary_subject_position':'right',
+            'shot_focus_plan':[{
+                'shot_id':'S1',
+                'focus_subject':'woman',
+                'focus_position':'right',
+                'focus_role':'primary',
+                'focus_reason':'bound subject disappears after midpoint',
+                'preserve_secondary_subject':False,
+                'interaction_requirement':'none',
+                'target_person_ids':['P2'],
+                'target_binding_confidence':'high',
+            }],
+        },
+    }
+
+    plan=f.build_shot_crop_plan(
+        tmp_path/'movie.mp4',
+        event,
+        {'S1':{'start_seconds':1.0,'end_seconds':2.0}},
+        160,
+        120,
+        detector=lambda _:next(calls),
+        sample_count=5,
+    )
+
+    rule=plan[0]
+
+    assert rule['target_binding_resolved'] is False
+    assert rule['review_required'] is True
+
+    validation=f._shot_validation(rule)
+
+    assert validation['target_binding_required'] is True
+    assert validation['target_binding_resolved'] is False
+    assert validation['status']=='FAIL'
+
+
+def test_legacy_focus_without_target_binding_keeps_existing_fallback(monkeypatch,tmp_path):
+    import numpy as np
+    import movie_broll.finalization as f
+
+    samples=[
+        (1.12,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.50,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.88,np.zeros((120,160,3),dtype=np.uint8)),
+    ]
+    monkeypatch.setattr(f,'_sample_frames',lambda *args,**kwargs:samples)
+
+    calls=iter([
+        [{'bbox':{'x':100,'y':10,'width':25,'height':90},'confidence':.9}],
+        [{'bbox':{'x':95,'y':10,'width':25,'height':90},'confidence':.9}],
+        [{'bbox':{'x':90,'y':10,'width':25,'height':90},'confidence':.9}],
+    ])
+
+    event={
+        'visual_event_id':'VE_LEGACY',
+        'start_seconds':1.0,
+        'end_seconds':2.0,
+        'start_frame':24,
+        'end_frame_exclusive':48,
+        'source_shot_ids':['S1'],
+        'visual':{
+            'primary_subject_position':'right',
+            'shot_focus_plan':[{
+                'shot_id':'S1',
+                'focus_subject':'woman',
+                'focus_position':'right',
+                'focus_role':'primary',
+                'focus_reason':'legacy semantic directive',
+                'preserve_secondary_subject':False,
+                'interaction_requirement':'none',
+            }],
+        },
+    }
+
+    plan=f.build_shot_crop_plan(
+        tmp_path/'movie.mp4',
+        event,
+        {'S1':{'start_seconds':1.0,'end_seconds':2.0}},
+        160,
+        120,
+        detector=lambda _:next(calls),
+        sample_count=3,
+    )
+
+    rule=plan[0]
+
+    assert rule['target_binding_present'] is False
+    assert rule['target_binding_resolved'] is None
+    assert rule['tracking']['mode']=='bounded_linear'

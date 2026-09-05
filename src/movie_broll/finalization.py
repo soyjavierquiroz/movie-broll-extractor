@@ -11,7 +11,7 @@ from .utils import sha256_file, write_json
 
 MOVIE_CODES={"romper-el-circulo":"rc"}; SAFE_MARGIN=.08
 # This is deliberately persistent: it is part of every vertical-only reuse key.
-REFRAME_ALGORITHM_VERSION="3e.2.3.8-source-preserving-export-v6"
+REFRAME_ALGORITHM_VERSION="3e.2.3.8-source-preserving-export-v7-target-binding"
 SHOT_FOCUS_SCHEMA_VERSION="shot_focus_plan_v1"
 LOCAL_DETECTOR_VERSION="yolov5n-onnx-person+haar-face-v1"
 PERSON_CANDIDATE_CONFIDENCE=.05; PERSON_NMS_IOU=.45
@@ -169,6 +169,200 @@ def _choose_target(found:list[dict[str,Any]],direct:dict[str,Any],width:int)->di
     def score(x):
         b=_bbox(x); center=b['x']+b['width']/2; return (abs(center-desired)/width,-float(x.get('confidence',.5)))
     return min(faces,key=score)
+
+def _binding_candidates(found:list[dict[str,Any]],width:int)->list[dict[str,Any]]:
+    """Assign the same shot-local P1/P2/... ordering used by semantic evidence."""
+    rows=[]
+    for item in found:
+        if item.get('detector') != 'yolo_person':
+            continue
+        box=_bbox(item)
+        if box['width']<=1 or box['height']<=1:
+            continue
+        center=box['x']+box['width']/2
+        rows.append({
+            'person_id':None,
+            'box':box,
+            '_center':center,
+            '_y':box['y'],
+            '_confidence':float(item.get('confidence',0.)),
+        })
+    rows.sort(key=lambda x:(x['_center'],x['_y'],-x['_confidence']))
+    for index,row in enumerate(rows,1):
+        row['person_id']=f'P{index}'
+        row.pop('_center',None)
+        row.pop('_y',None)
+        row.pop('_confidence',None)
+    return rows
+
+
+def _bbox_iou(a:dict[str,float],b:dict[str,float])->float:
+    left=max(a['x'],b['x'])
+    top=max(a['y'],b['y'])
+    right=min(a['x']+a['width'],b['x']+b['width'])
+    bottom=min(a['y']+a['height'],b['y']+b['height'])
+    inter=max(0.,right-left)*max(0.,bottom-top)
+    if inter<=0:
+        return 0.
+    area_a=max(1.,a['width']*a['height'])
+    area_b=max(1.,b['width']*b['height'])
+    return inter/max(1.,area_a+area_b-inter)
+
+
+def _identity_track_cost(previous:dict[str,float],candidate:dict[str,float],source_width:int)->tuple[float,dict[str,float]]:
+    """Geometry-only identity continuity inside one technical shot."""
+    import math
+
+    pc=previous['x']+previous['width']/2
+    cc=candidate['x']+candidate['width']/2
+    center_distance=abs(cc-pc)/max(1.,float(source_width))
+    iou=_bbox_iou(previous,candidate)
+
+    previous_area=max(1.,previous['width']*previous['height'])
+    candidate_area=max(1.,candidate['width']*candidate['height'])
+    area_change=abs(math.log(candidate_area/previous_area))
+
+    previous_ar=max(.001,previous['width']/max(1.,previous['height']))
+    candidate_ar=max(.001,candidate['width']/max(1.,candidate['height']))
+    aspect_change=abs(math.log(candidate_ar/previous_ar))
+
+    # IoU is useful for short movement; centre/scale continuity allows motion
+    # between sparse samples without redefining editorial identity.
+    cost=(
+        (1.-iou)*.50
+        + center_distance*1.75
+        + min(area_change,2.)*.18
+        + min(aspect_change,2.)*.10
+    )
+
+    return cost,{
+        'iou':iou,
+        'center_distance_ratio':center_distance,
+        'area_log_change':area_change,
+        'aspect_log_change':aspect_change,
+    }
+
+
+def _track_bound_target(previous:dict[str,float],found:list[dict[str,Any]],width:int)->tuple[dict[str,float]|None,dict[str,Any]]:
+    """Continue one already-bound person; never fall back to semantic position."""
+    candidates=[x['box'] for x in _binding_candidates(found,width)]
+
+    if not candidates:
+        return None,{'resolved':False,'reason':'no_person_candidates'}
+
+    ranked=[]
+    for candidate in candidates:
+        cost,metrics=_identity_track_cost(previous,candidate,width)
+        ranked.append((cost,candidate,metrics))
+
+    ranked.sort(key=lambda x:x[0])
+    cost,candidate,metrics=ranked[0]
+
+    # Reject implausible discontinuities rather than silently switching people.
+    plausible=(
+        metrics['iou'] >= .01
+        or metrics['center_distance_ratio'] <= .18
+    )
+    scale_ok=metrics['area_log_change'] <= 1.40
+    aspect_ok=metrics['aspect_log_change'] <= .90
+
+    if not (plausible and scale_ok and aspect_ok):
+        return None,{
+            'resolved':False,
+            'reason':'identity_discontinuity',
+            'cost':round(cost,5),
+            **{k:round(v,5) for k,v in metrics.items()},
+        }
+
+    return candidate,{
+        'resolved':True,
+        'reason':'geometry_continuity',
+        'cost':round(cost,5),
+        **{k:round(v,5) for k,v in metrics.items()},
+    }
+
+
+def _bound_single_subject_samples(
+    sampled:list[tuple[float,np.ndarray]],
+    detections:list[list[dict[str,Any]]],
+    target_person_id:str,
+    width:int,
+)->tuple[list[tuple[float,dict[str,float]]],bool,dict[str,Any]]:
+    """Seed at the semantic reference midpoint, then track both directions."""
+    if not sampled or len(sampled)!=len(detections):
+        return [],False,{'reason':'invalid_samples'}
+
+    midpoint=(sampled[0][0]+sampled[-1][0])/2
+    seed_index=min(
+        range(len(sampled)),
+        key=lambda i:abs(sampled[i][0]-midpoint),
+    )
+
+    seed_candidates=_binding_candidates(detections[seed_index],width)
+    seed=next(
+        (x['box'] for x in seed_candidates if x['person_id']==target_person_id),
+        None,
+    )
+
+    if seed is None:
+        return [],False,{
+            'reason':'target_not_found_at_reference_sample',
+            'target_person_id':target_person_id,
+            'seed_index':seed_index,
+            'available_ids':[x['person_id'] for x in seed_candidates],
+        }
+
+    resolved={seed_index:seed}
+    diagnostics={
+        'target_person_id':target_person_id,
+        'seed_index':seed_index,
+        'seed_time':sampled[seed_index][0],
+        'steps':[],
+    }
+    complete=True
+
+    previous=seed
+    for index in range(seed_index+1,len(sampled)):
+        target,detail=_track_bound_target(previous,detections[index],width)
+        diagnostics['steps'].append({
+            'direction':'forward',
+            'sample_index':index,
+            'time':sampled[index][0],
+            **detail,
+        })
+        if target is None:
+            complete=False
+            break
+        resolved[index]=target
+        previous=target
+
+    previous=seed
+    for index in range(seed_index-1,-1,-1):
+        target,detail=_track_bound_target(previous,detections[index],width)
+        diagnostics['steps'].append({
+            'direction':'backward',
+            'sample_index':index,
+            'time':sampled[index][0],
+            **detail,
+        })
+        if target is None:
+            complete=False
+            break
+        resolved[index]=target
+        previous=target
+
+    ordered=[
+        (sampled[index][0],resolved[index])
+        for index in sorted(resolved)
+    ]
+
+    diagnostics['resolved_samples']=len(ordered)
+    diagnostics['sample_count']=len(sampled)
+    diagnostics['complete']=complete and len(ordered)==len(sampled)
+
+    return ordered,diagnostics['complete'],diagnostics
+
+
 def _union(boxes:list[dict[str,float]])->dict[str,float]:
     left=min(x['x'] for x in boxes); top=min(x['y'] for x in boxes); right=max(x['x']+x['width'] for x in boxes); bottom=max(x['y']+x['height'] for x in boxes); return {'x':left,'y':top,'width':right-left,'height':bottom-top}
 def _anchor(box:dict[str,float],source:int,crop:int)->float: return max(0.,min(float(source-crop),box['x']+box['width']/2-crop/2))
@@ -185,46 +379,313 @@ def _smooth(values:list[tuple[float,float]],crop:int,start:float|None=None,end:f
     if end is not None and end>previous: output.append({'time':float(end),'x':old})
     return output
 def build_shot_crop_plan(source_video:Path,event:dict[str,Any],shots:dict[str,dict[str,Any]],width:int,height:int,detector:Callable[[np.ndarray],list[dict[str,Any]]]=detect_people,strategy:str='subject_focus',sample_count:int=5)->list[dict[str,Any]]:
-    """Build geometry from source_movie on source_absolute timeline, never event clips."""
-    crop=min(width,round(height*3/4)); plans=[]
+    """Build per-shot source geometry with optional semantic person binding."""
+    crop=min(width,round(height*3/4))
+    plans=[]
+
     for sid in event.get('source_shot_ids',[]) or ['event']:
-        shot=shots.get(sid,{}); start=float(shot.get('start_seconds',event['start_seconds'])); end=float(shot.get('end_seconds',event['end_seconds'])); direct=_directive(event,{**shot,'shot_id':sid}); samples=[]; all_boxes=[]; focus_boxes=[]; action=[]; prior=None
+        shot=shots.get(sid,{})
+        start=float(shot.get('start_seconds',event['start_seconds']))
+        end=float(shot.get('end_seconds',event['end_seconds']))
+        direct=_directive(event,{**shot,'shot_id':sid})
+
         sampled=_sample_frames(source_video,start,end,sample_count)
-        for t,frame in sampled:
-            found=[_bbox(x) for x in detector(frame)]; target=_choose_target(found,direct,width)
-            # Associate local detections to the prior sample, preventing a
-            # different nearby person from stealing focus mid-shot.
-            if prior is not None and found:
-                candidates=[x for x in found if not x.get('foreground',False)] or found
-                faces=[x for x in candidates if x.get('face_visible',False)] or candidates
-                target=min(faces,key=lambda x:abs((x['x']+x['width']/2)-(prior['x']+prior['width']/2)))
-            if target: target=_bbox(target); focus_boxes.append(target); samples.append((t,_anchor(target,width,crop)))
-            if target: prior=target
-            all_boxes.extend(found)
-        regions=direct.get('required_action_region',[]); regions=regions if isinstance(regions,list) else [regions]; action=[_bbox(x) for x in regions if x]
-        focus=_union(focus_boxes) if focus_boxes else None; preserve=direct['interaction_requirement']=='simultaneous' or bool(direct.get('required_secondary_subjects',[])); composition=[focus] if focus else []
-        if (preserve or strategy=='interaction_aware') and all_boxes: composition=[_union(all_boxes)]
-        composition+=action; required=_union(composition) if composition else focus; impossible=bool(required and required['width']>crop*(1-2*SAFE_MARGIN) and (preserve or action))
-        if (preserve or action) and required and required['width']<=crop*(1-2*SAFE_MARGIN):
-            anchors=_smooth(
-                [(t,_anchor(required,width,crop)) for t,_ in samples]
-                or [(start,_anchor(required,width,crop))],
-                crop,start,end,
-            )
-        elif samples:
-            # A normal subject follows its sampled geometry inside THIS
-            # technical shot. Tracking never carries across a hard cut.
-            anchors=_smooth(samples,crop,start,end)
-        elif required and required['width']<=crop*(1-2*SAFE_MARGIN):
-            anchors=[{'time':start,'x':float(_anchor(required,width,crop))}]
+        detected=[detector(frame) for _,frame in sampled]
+
+        all_boxes=[
+            _bbox(item)
+            for frame_found in detected
+            for item in frame_found
+        ]
+
+        target_ids=direct.get('target_person_ids')
+        target_ids=target_ids if isinstance(target_ids,list) else []
+        target_confidence=str(direct.get('target_binding_confidence','unclear'))
+
+        required_person=direct['focus_subject'] in {
+            'woman','man','multiple_people'
+        }
+
+        bound_single=(
+            required_person
+            and direct['focus_subject'] in {'woman','man'}
+            and len(target_ids)==1
+        )
+
+        binding_present='target_person_ids' in direct
+        binding_resolved=True
+        binding_diagnostics={}
+        tracked_boxes=[]
+
+        if bound_single:
+            tracked_boxes,binding_resolved,binding_diagnostics = \
+                _bound_single_subject_samples(
+                    sampled,
+                    detected,
+                    str(target_ids[0]),
+                    width,
+                )
+
+            focus_boxes=[box for _,box in tracked_boxes]
+            anchor_samples=[
+                (time,_anchor(box,width,crop))
+                for time,box in tracked_boxes
+            ]
+
         else:
-            pos=str(shot.get('primary_subject_position',event.get('visual',{}).get('primary_subject_position','center'))).lower(); anchors=[{'time':start,'x':float(crop_x(width,height,pos))}]
-        required_person=direct['focus_subject'] in {'woman','man','multiple_people'}
+            # Legacy or non-single-subject path. Semantic position remains a
+            # fallback only when there is no explicit single-person binding.
+            focus_boxes=[]
+            anchor_samples=[]
+            prior=None
+
+            for (t,_),found_raw in zip(sampled,detected):
+                found=[_bbox(x) for x in found_raw]
+                target=_choose_target(found,direct,width)
+
+                if prior is not None and found:
+                    candidates=[
+                        x for x in found
+                        if not x.get('foreground',False)
+                    ] or found
+                    faces=[
+                        x for x in candidates
+                        if x.get('face_visible',False)
+                    ] or candidates
+                    target=min(
+                        faces,
+                        key=lambda x:abs(
+                            (x['x']+x['width']/2)
+                            -(prior['x']+prior['width']/2)
+                        ),
+                    )
+
+                if target:
+                    target=_bbox(target)
+                    focus_boxes.append(target)
+                    anchor_samples.append(
+                        (t,_anchor(target,width,crop))
+                    )
+                    prior=target
+
+            # An explicit human binding that cannot be consumed by this
+            # strategy must never be treated as silently resolved.
+            if (
+                binding_present
+                and required_person
+                and direct['focus_subject'] in {'woman','man'}
+            ):
+                binding_resolved=False
+                binding_diagnostics={
+                    'reason':'invalid_single_person_binding',
+                    'target_person_ids':target_ids,
+                }
+
+        regions=direct.get('required_action_region',[])
+        regions=regions if isinstance(regions,list) else [regions]
+        action=[_bbox(x) for x in regions if x]
+
+        focus=_union(focus_boxes) if focus_boxes else None
+        preserve=(
+            direct['interaction_requirement']=='simultaneous'
+            or bool(direct.get('required_secondary_subjects',[]))
+        )
+
+        composition=[focus] if focus else []
+
+        if (preserve or strategy=='interaction_aware') and all_boxes:
+            composition=[_union(all_boxes)]
+
+        composition+=action
+        required=_union(composition) if composition else focus
+
+        impossible=bool(
+            required
+            and required['width']>crop*(1-2*SAFE_MARGIN)
+            and (preserve or action)
+        )
+
+        if (
+            (preserve or action)
+            and required
+            and required['width']<=crop*(1-2*SAFE_MARGIN)
+        ):
+            anchors=_smooth(
+                [
+                    (t,_anchor(required,width,crop))
+                    for t,_ in anchor_samples
+                ]
+                or [(start,_anchor(required,width,crop))],
+                crop,
+                start,
+                end,
+            )
+        elif anchor_samples:
+            anchors=_smooth(anchor_samples,crop,start,end)
+        elif required and required['width']<=crop*(1-2*SAFE_MARGIN):
+            anchors=[
+                {
+                    'time':start,
+                    'x':float(_anchor(required,width,crop)),
+                }
+            ]
+        else:
+            pos=str(
+                shot.get(
+                    'primary_subject_position',
+                    event.get('visual',{}).get(
+                        'primary_subject_position',
+                        'center',
+                    ),
+                )
+            ).lower()
+            anchors=[
+                {
+                    'time':start,
+                    'x':float(crop_x(width,height,pos)),
+                }
+            ]
+
         unresolved=required_person and focus is None
-        person_count=sum(1 for x in all_boxes if x.get('detector')=='yolo_person'); face_count=sum(1 for x in all_boxes if x.get('face_visible'))
-        provenance={'person_detector':dict(_PERSON_RUNTIME or {'model_id':PERSON_MODEL_ID,'loaded':False,'inference_executed':False}),'face_detector':dict(_FACE_RUNTIME)}
-        source_start_frame=int(shot.get('start_frame',round(start*24))); source_end_frame=int(shot.get('end_frame_exclusive',round(end*24))); event_start_frame=int(event.get('start_frame',round(float(event['start_seconds'])*24)))
-        plans.append({'shot_id':sid,'start_seconds':start,'end_seconds':end,'source_start_frame':source_start_frame,'source_end_frame_exclusive':source_end_frame,'render_start_frame':max(0,source_start_frame-event_start_frame),'render_end_frame_exclusive':max(0,source_end_frame-event_start_frame),'render_start_seconds':max(0.,start-float(event['start_seconds'])),'render_end_seconds':max(0.,min(float(event['end_seconds'])-float(event['start_seconds']),end-float(event['start_seconds']))),'sampling':{'media_role':'source_movie','timeline_basis':'source_absolute','requested_start':start,'requested_end':end,'sampled_frame_count':len(sampled)},'tracking':{'mode':'bounded_linear','anchor_count':len(anchors),'dead_zone_ratio':TRACKING_DEAD_ZONE_RATIO,'max_velocity_ratio_per_second':TRACKING_MAX_VELOCITY_RATIO_PER_SECOND,'interpolation':'linear'},'focus_subject':direct['focus_subject'],'focus_position':direct.get('focus_position','unclear'),'focus_role':direct['focus_role'],'focus_reason':direct.get('focus_reason','semantic shot focus plus local geometry'),'directive_available':direct['directive_available'],'required_person_focus':required_person,'interaction_requirement':direct['interaction_requirement'],'preserve_interaction':preserve,'required_action_region':regions,'focus_bbox':focus,'subject_bboxes':all_boxes,'person_detection_count':person_count,'face_detection_count':face_count,'geometry_resolved':bool(focus),'anchors':anchors,'x':float(np.median([x['x'] for x in anchors])),'crop_width':crop,'source_width':width,'strategy':strategy,'review_required':impossible or unresolved or not direct['directive_available'],'action_preserved':not action or bool(required),'detector_version':LOCAL_DETECTOR_VERSION if detector is detect_people and provenance['person_detector']['loaded'] else 'injected_test_detector','detector_provenance':provenance})
+
+        # Explicit semantic binding is authoritative. If it could not be
+        # maintained through every sampled time, the shot is not auto-PASS.
+        binding_failed=(
+            binding_present
+            and required_person
+            and not binding_resolved
+        )
+
+        person_count=sum(
+            1 for x in all_boxes
+            if x.get('detector')=='yolo_person'
+        )
+        face_count=sum(
+            1 for x in all_boxes
+            if x.get('face_visible')
+        )
+
+        provenance={
+            'person_detector':dict(
+                _PERSON_RUNTIME
+                or {
+                    'model_id':PERSON_MODEL_ID,
+                    'loaded':False,
+                    'inference_executed':False,
+                }
+            ),
+            'face_detector':dict(_FACE_RUNTIME),
+        }
+
+        source_start_frame=int(
+            shot.get('start_frame',round(start*24))
+        )
+        source_end_frame=int(
+            shot.get('end_frame_exclusive',round(end*24))
+        )
+        event_start_frame=int(
+            event.get(
+                'start_frame',
+                round(float(event['start_seconds'])*24),
+            )
+        )
+
+        plans.append({
+            'shot_id':sid,
+            'start_seconds':start,
+            'end_seconds':end,
+            'source_start_frame':source_start_frame,
+            'source_end_frame_exclusive':source_end_frame,
+            'render_start_frame':max(
+                0,
+                source_start_frame-event_start_frame,
+            ),
+            'render_end_frame_exclusive':max(
+                0,
+                source_end_frame-event_start_frame,
+            ),
+            'render_start_seconds':max(
+                0.,
+                start-float(event['start_seconds']),
+            ),
+            'render_end_seconds':max(
+                0.,
+                min(
+                    float(event['end_seconds'])
+                    -float(event['start_seconds']),
+                    end-float(event['start_seconds']),
+                ),
+            ),
+            'sampling':{
+                'media_role':'source_movie',
+                'timeline_basis':'source_absolute',
+                'requested_start':start,
+                'requested_end':end,
+                'sampled_frame_count':len(sampled),
+            },
+            'tracking':{
+                'mode':(
+                    'semantic_bound_geometry'
+                    if bound_single
+                    else 'bounded_linear'
+                ),
+                'anchor_count':len(anchors),
+                'dead_zone_ratio':TRACKING_DEAD_ZONE_RATIO,
+                'max_velocity_ratio_per_second':
+                    TRACKING_MAX_VELOCITY_RATIO_PER_SECOND,
+                'interpolation':'linear',
+                'identity_diagnostics':binding_diagnostics,
+            },
+            'focus_subject':direct['focus_subject'],
+            'focus_position':direct.get(
+                'focus_position',
+                'unclear',
+            ),
+            'focus_role':direct['focus_role'],
+            'focus_reason':direct.get(
+                'focus_reason',
+                'semantic shot focus plus local geometry',
+            ),
+            'directive_available':direct['directive_available'],
+            'required_person_focus':required_person,
+            'interaction_requirement':
+                direct['interaction_requirement'],
+            'preserve_interaction':preserve,
+            'required_action_region':regions,
+            'focus_bbox':focus,
+            'subject_bboxes':all_boxes,
+            'person_detection_count':person_count,
+            'face_detection_count':face_count,
+            'geometry_resolved':bool(focus),
+            'target_person_ids':target_ids,
+            'target_binding_confidence':target_confidence,
+            'target_binding_present':binding_present,
+            'target_binding_resolved':(
+                binding_resolved
+                if binding_present and required_person
+                else None
+            ),
+            'anchors':anchors,
+            'x':float(np.median([x['x'] for x in anchors])),
+            'crop_width':crop,
+            'source_width':width,
+            'strategy':strategy,
+            'review_required':(
+                impossible
+                or unresolved
+                or binding_failed
+                or not direct['directive_available']
+            ),
+            'action_preserved':not action or bool(required),
+            'detector_version':(
+                LOCAL_DETECTOR_VERSION
+                if detector is detect_people
+                and provenance['person_detector']['loaded']
+                else 'injected_test_detector'
+            ),
+            'detector_provenance':provenance,
+        })
+
     return plans
 def shot_crop_plan(event:dict[str,Any],shots:dict[str,dict[str,Any]],width:int,height:int)->list[dict[str,Any]]:
     """No-video compatibility fallback; production calls build_shot_crop_plan."""
@@ -311,8 +772,10 @@ def _shot_validation(rule:dict[str,Any])->dict[str,Any]:
     present=bool(focus) if required_person else None
     safe=bool(focus) and not introduced if required_person else None
     geometry_ok=(present and safe) if required_person else True
-    ok=bool(rule.get('directive_available',True)) and geometry_ok and not introduced and not empty and stable and interaction and rule.get('action_preserved',True) and action_ok
-    return {'shot_id':rule['shot_id'],'focus_requirement':requirement,'focus_geometry_resolved':bool(focus),'focus_directive_available':bool(rule.get('directive_available',True)),'focus_subject_present':present,'focus_subject_safe':safe,'full_bbox_clipping':full_clipping,'critical_focus_clipping':critical_clipping,'introduced_subject_clipping':introduced,'source_edge_exception':source_clip,'empty_space_while_clipped':empty,'interaction_preserved':interaction,'action_preserved':rule.get('action_preserved',True) and action_ok,'crop_stable':stable,'status':'PASS' if ok else 'FAIL'}
+    binding_required=bool(rule.get('target_binding_present')) and required_person
+    binding_ok=not binding_required or rule.get('target_binding_resolved') is True
+    ok=bool(rule.get('directive_available',True)) and geometry_ok and binding_ok and not introduced and not empty and stable and interaction and rule.get('action_preserved',True) and action_ok
+    return {'shot_id':rule['shot_id'],'focus_requirement':requirement,'focus_geometry_resolved':bool(focus),'focus_directive_available':bool(rule.get('directive_available',True)),'focus_subject_present':present,'focus_subject_safe':safe,'target_binding_required':binding_required,'target_binding_resolved':rule.get('target_binding_resolved'),'full_bbox_clipping':full_clipping,'critical_focus_clipping':critical_clipping,'introduced_subject_clipping':introduced,'source_edge_exception':source_clip,'empty_space_while_clipped':empty,'interaction_preserved':interaction,'action_preserved':rule.get('action_preserved',True) and action_ok,'crop_stable':stable,'status':'PASS' if ok else 'FAIL'}
 def validate_vertical(path:Path,expected:float,plan:list[dict[str,Any]],event:dict[str,Any])->dict[str,Any]:
     cap=cv2.VideoCapture(str(path)); w,h=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); count=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); fps=cap.get(cv2.CAP_PROP_FPS) or 24.; frames=[]
     for i in {0,max(0,count//2),max(0,count-1)}:cap.set(cv2.CAP_PROP_POS_FRAMES,i); ok,x=cap.read(); frames.extend([x] if ok else [])
