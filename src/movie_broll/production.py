@@ -319,7 +319,7 @@ def process(input_dir: Path, provider: Any = None, model: str = "gemini-3.6-flas
         if active_provider is None:
             raise RuntimeError(
                 "provider configuration missing: "
-                "GEMINI_API_KEY_1/2/3, GEMINI_API_KEY_BACKUP, "
+                "GEMINI_API_KEY_1..6, GEMINI_API_KEY_BACKUP, "
                 "or legacy GEMINI_API_KEY"
             )
     report(f"[movie-broll] movie: {input_dir.name}")

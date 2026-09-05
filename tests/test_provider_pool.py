@@ -364,3 +364,74 @@ def test_all_auth_failures_are_resume_safe_pool_failure():
         assert error.attempts == 2
     else:
         raise AssertionError("expected GeminiProviderPoolError")
+
+
+
+def test_env_builder_uses_six_primaries_before_backup(monkeypatch):
+    import movie_broll.broll_semantics as semantics
+
+    calls=[]
+
+    class EnvProvider:
+        def __init__(
+            self,
+            api_key,
+            model="gemini-3.6-flash",
+            identifier="gemini",
+        ):
+            self.api_key=api_key
+            self.model=model
+            self.identifier=identifier
+
+        def generate(self,*args):
+            calls.append(self.identifier)
+
+            if self.identifier!="gemini-backup":
+                raise RuntimeError(
+                    "Error code: 503 service unavailable"
+                )
+
+            return SemanticResponse(
+                {"ok":True},
+                {
+                    "prompt_tokens":1,
+                    "response_tokens":1,
+                    "thinking_tokens":0,
+                    "cached_tokens":0,
+                    "total_tokens":2,
+                },
+            )
+
+    monkeypatch.setattr(
+        semantics,
+        "GeminiBrollSemanticProvider",
+        EnvProvider,
+    )
+
+    env={
+        f"GEMINI_API_KEY_{i}":f"fake-key-{i}"
+        for i in range(1,7)
+    }
+    env["GEMINI_API_KEY_BACKUP"]="fake-backup-key"
+
+    pool=semantics.build_gemini_provider_from_env(
+        environ=env,
+    )
+
+    response=pool.generate(
+        "prompt",
+        {"candidate_id":"BRC_TEST"},
+        b"image",
+    )
+
+    assert response.provider=="gemini-backup"
+    assert response.attempts==7
+    assert calls == [
+        "gemini-primary-1",
+        "gemini-primary-2",
+        "gemini-primary-3",
+        "gemini-primary-4",
+        "gemini-primary-5",
+        "gemini-primary-6",
+        "gemini-backup",
+    ]

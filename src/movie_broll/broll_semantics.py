@@ -508,7 +508,7 @@ def build_gemini_provider_from_env(
 
     primary_specs = [
         (f"gemini-primary-{index}", env.get(f"GEMINI_API_KEY_{index}"))
-        for index in (1, 2, 3)
+        for index in range(1, 7)
     ]
     primary_specs = [
         (name, key)
