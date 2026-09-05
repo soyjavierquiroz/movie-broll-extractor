@@ -16,10 +16,12 @@ SHOT_FOCUS_SCHEMA_VERSION="shot_focus_plan_v1"
 LOCAL_DETECTOR_VERSION="yolov5n-onnx-person+haar-face-v1"
 PERSON_CANDIDATE_CONFIDENCE=.05; PERSON_NMS_IOU=.45
 PERSON_MODEL_ID="yolov5n"; PERSON_MODEL_NAME="yolov5n.onnx"; PERSON_MODEL_VERSION="yolov5-v7.0"; PERSON_WEIGHTS_NAME="yolov5n.pt"; PERSON_WEIGHTS_URL="https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5n.pt"; YOLOV5_EXPORT_REPOSITORY="https://github.com/ultralytics/yolov5.git"
-VERTICAL_VALIDATION_VERSION="3e.2.3.9-close-up-person-focus-v1"
+VERTICAL_VALIDATION_VERSION="3e.2.3.10-post-render-person-audit-v1"
 # Kept in the render cache key for compatibility with 3E.2.3.8 pixels.  A
 # validator revision must cause revalidation, never a new vertical render.
 REFRAME_VALIDATION_COMPATIBILITY_VERSION="3e.2.3.6-focus-core-validation-v2"
+POST_RENDER_AUDIT_VERSION="post_render_vertical_audit_v1"
+POST_RENDER_SAMPLES_PER_SHOT=5
 FOCUS_SUBJECTS={"woman","man","multiple_people","action_region","environment","unclear"}
 INTERACTION_REQUIREMENTS={"none","sequence","simultaneous","unclear"}
 _PERSON_RUNTIME:dict[str,Any]|None=None
@@ -776,12 +778,438 @@ def _shot_validation(rule:dict[str,Any])->dict[str,Any]:
     binding_ok=not binding_required or rule.get('target_binding_resolved') is True
     ok=bool(rule.get('directive_available',True)) and geometry_ok and binding_ok and not introduced and not empty and stable and interaction and rule.get('action_preserved',True) and action_ok
     return {'shot_id':rule['shot_id'],'focus_requirement':requirement,'focus_geometry_resolved':bool(focus),'focus_directive_available':bool(rule.get('directive_available',True)),'focus_subject_present':present,'focus_subject_safe':safe,'target_binding_required':binding_required,'target_binding_resolved':rule.get('target_binding_resolved'),'full_bbox_clipping':full_clipping,'critical_focus_clipping':critical_clipping,'introduced_subject_clipping':introduced,'source_edge_exception':source_clip,'empty_space_while_clipped':empty,'interaction_preserved':interaction,'action_preserved':rule.get('action_preserved',True) and action_ok,'crop_stable':stable,'status':'PASS' if ok else 'FAIL'}
-def validate_vertical(path:Path,expected:float,plan:list[dict[str,Any]],event:dict[str,Any])->dict[str,Any]:
-    cap=cv2.VideoCapture(str(path)); w,h=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); count=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); fps=cap.get(cv2.CAP_PROP_FPS) or 24.; frames=[]
-    for i in {0,max(0,count//2),max(0,count-1)}:cap.set(cv2.CAP_PROP_POS_FRAMES,i); ok,x=cap.read(); frames.extend([x] if ok else [])
-    cap.release(); bars=any(float(np.mean(cv2.cvtColor(x,cv2.COLOR_BGR2GRAY)<8))>.92 for x in frames); per=[_shot_validation(x) for x in plan]; ok=path.exists() and count>0 and w*4==h*3 and abs(count/fps-expected)<=1 and not bars and all(x['status']=='PASS' for x in per)
-    sequence=[rule for rule in plan if rule.get('interaction_requirement')=='sequence']; sequence_ok=all((x['focus_subject_present'] and x['focus_subject_safe'] if rule.get('required_person_focus',rule.get('focus_subject') in {'woman','man','multiple_people'}) else True) and x['action_preserved'] for x,rule in zip(per,plan) if rule.get('interaction_requirement')=='sequence')
-    return {'status':'PASS' if ok and sequence_ok else 'REVIEW','review_reason':'REVIEW_VERTICAL' if not (ok and sequence_ok) else None,'width':w,'height':h,'aspect_ratio':'3:4' if w*4==h*3 else 'other','duration_seconds':count/fps,'black_bars':bars,'shots':per,'sequence_interaction_preserved':sequence_ok,'sequence_interaction_shots':[x['shot_id'] for x in sequence],'stable_per_shot':all(x['crop_stable'] for x in per),'semantic_retained':all(x['interaction_preserved'] for x in per)}
+
+def _post_render_sample_indices(rule:dict[str,Any],frame_count:int,count:int=POST_RENDER_SAMPLES_PER_SHOT)->list[int]:
+    """Bound samples to one rendered technical shot; never cross a hard cut."""
+    if frame_count<=0:
+        return []
+
+    start=max(
+        0,
+        min(
+            frame_count-1,
+            int(rule.get('render_start_frame',0)),
+        ),
+    )
+    end=max(
+        start+1,
+        min(
+            frame_count,
+            int(rule.get('render_end_frame_exclusive',frame_count)),
+        ),
+    )
+
+    span=end-start
+    wanted=max(1,min(int(count),span))
+
+    if wanted==1:
+        return [start+span//2]
+
+    values=np.linspace(
+        start+(span-1)*.12,
+        start+(span-1)*.88,
+        wanted,
+    )
+    return sorted({
+        max(start,min(end-1,int(round(x))))
+        for x in values
+    })
+
+
+def _post_render_person_boxes(found:list[dict[str,Any]])->list[dict[str,float]]:
+    """Use person geometry only; face candidates never become target authority."""
+    boxes=[]
+
+    for item in found:
+        # Production detector emits explicit YOLO person provenance.
+        # Injected test detectors may omit the detector field.
+        detector_name=item.get('detector')
+        if detector_name not in {None,'yolo_person'}:
+            continue
+
+        try:
+            box=_bbox(item)
+        except (KeyError,TypeError,ValueError):
+            continue
+
+        if box['width']<=1 or box['height']<=1:
+            continue
+
+        boxes.append(box)
+
+    return boxes
+
+
+def post_render_vertical_audit(
+    path:Path,
+    plan:list[dict[str,Any]],
+    detector:Callable[[np.ndarray],list[dict[str,Any]]]=detect_people,
+    samples_per_shot:int=POST_RENDER_SAMPLES_PER_SHOT,
+)->dict[str,Any]:
+    """Observe the actual rendered vertical instead of trusting plan geometry.
+
+    Semantic target binding remains the authority for WHO should be followed.
+    This stage answers a different question: did the resulting vertical keep a
+    usable human composition through the technical shot?
+    """
+    cap=cv2.VideoCapture(str(path))
+    frame_count=int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    width=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    if (
+        not path.is_file()
+        or not cap.isOpened()
+        or frame_count<=0
+        or width<=0
+        or height<=0
+    ):
+        cap.release()
+        return {
+            'version':POST_RENDER_AUDIT_VERSION,
+            'decision':'AMBIGUOUS',
+            'reason':'vertical_unreadable',
+            'shots':[],
+        }
+
+    shot_results=[]
+
+    for rule in plan:
+        required_person=bool(
+            rule.get(
+                'required_person_focus',
+                rule.get('focus_subject')
+                in {'woman','man','multiple_people'},
+            )
+        )
+
+        if not required_person:
+            shot_results.append({
+                'shot_id':rule.get('shot_id'),
+                'decision':'PASS',
+                'reason':'person_audit_not_applicable',
+                'sample_count':0,
+            })
+            continue
+
+        if (
+            rule.get('target_binding_present')
+            and rule.get('target_binding_resolved') is not True
+        ):
+            shot_results.append({
+                'shot_id':rule.get('shot_id'),
+                'decision':'RETRY',
+                'reason':'semantic_target_binding_unresolved',
+                'sample_count':0,
+            })
+            continue
+
+        indices=_post_render_sample_indices(
+            rule,
+            frame_count,
+            samples_per_shot,
+        )
+
+        if not indices:
+            shot_results.append({
+                'shot_id':rule.get('shot_id'),
+                'decision':'AMBIGUOUS',
+                'reason':'no_render_samples',
+                'sample_count':0,
+            })
+            continue
+
+        samples=[]
+        detector_error=None
+
+        for index in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES,index)
+            ok,frame=cap.read()
+
+            if not ok:
+                samples.append({
+                    'frame':index,
+                    'decoded':False,
+                    'person_count':0,
+                    'centered':False,
+                })
+                continue
+
+            try:
+                people=_post_render_person_boxes(detector(frame))
+            except (RuntimeError,cv2.error) as error:
+                detector_error=str(error)
+                break
+
+            selected=None
+            centered=False
+            center_offset=None
+
+            if people:
+                # Binding already decided WHO upstream. At this stage the
+                # intended crop should have placed that target near the useful
+                # horizontal region. The nearest visible person to crop centre
+                # is therefore the best composition observation, not a new
+                # editorial selection.
+                selected=min(
+                    people,
+                    key=lambda box:abs(
+                        (box['x']+box['width']/2)-width/2
+                    ),
+                )
+
+                center=selected['x']+selected['width']/2
+                center_offset=abs(center-width/2)/max(1.,width)
+
+                # Deliberately generous. This catches persistent edge loss
+                # without rejecting normal rule-of-thirds composition.
+                centered=center_offset<=.33
+
+            samples.append({
+                'frame':index,
+                'decoded':True,
+                'person_count':len(people),
+                'selected_bbox':selected,
+                'center_offset_ratio':(
+                    round(center_offset,5)
+                    if center_offset is not None
+                    else None
+                ),
+                'centered':centered,
+            })
+
+        if detector_error is not None:
+            shot_results.append({
+                'shot_id':rule.get('shot_id'),
+                'decision':'AMBIGUOUS',
+                'reason':'post_render_detector_error',
+                'detector_error':detector_error,
+                'sample_count':len(indices),
+                'samples':samples,
+            })
+            continue
+
+        total=max(1,len(indices))
+        decoded=sum(bool(x.get('decoded')) for x in samples)
+        present=sum(x.get('person_count',0)>0 for x in samples)
+        centered=sum(bool(x.get('centered')) for x in samples)
+
+        multi=sum(
+            x.get('person_count',0)>1
+            for x in samples
+        )
+
+        enough_people=sum(
+            x.get('person_count',0)>=2
+            for x in samples
+        )
+
+        decoded_ratio=decoded/total
+        presence_ratio=present/total
+        centered_ratio=centered/total
+        multiple_ratio=multi/total
+        enough_people_ratio=enough_people/total
+
+        focus_subject=rule.get('focus_subject')
+        interaction=rule.get('interaction_requirement')
+        binding_present=bool(rule.get('target_binding_present'))
+
+        focus_bbox=rule.get('focus_bbox')
+        close_up_expected=bool(
+            focus_bbox
+            and float(focus_bbox.get('width',0))
+            >= float(rule.get('crop_width',width))*1.40
+        )
+
+        decision='PASS'
+        reason='rendered_subject_present_and_usable'
+
+        if decoded_ratio < .80:
+            decision='AMBIGUOUS'
+            reason='insufficient_render_decode'
+
+        elif focus_subject=='multiple_people':
+            if (
+                interaction=='simultaneous'
+                and enough_people_ratio < .60
+            ):
+                decision='RETRY'
+                reason='required_people_not_visible_together'
+            elif enough_people_ratio < .60:
+                decision='AMBIGUOUS'
+                reason='multiple_people_not_reliably_observed'
+
+        elif presence_ratio < .60:
+            # Person-only YOLO can be inconclusive on extreme close-ups.
+            # Do not manufacture a crop failure when the local observer lacks
+            # sufficient evidence; a later face/semantic reviewer can resolve it.
+            if close_up_expected:
+                decision='AMBIGUOUS'
+                reason='close_up_person_detection_inconclusive'
+            else:
+                decision='RETRY'
+                reason='focused_person_lost_in_render'
+
+        elif centered_ratio < .60:
+            decision='RETRY'
+            reason='focused_person_persistently_off_crop'
+
+        elif not binding_present and multiple_ratio >= .40:
+            # Legacy semantic plans can show a usable person while still giving
+            # us no proof it is the intended person. Never call that identity
+            # question automatically PASS.
+            decision='AMBIGUOUS'
+            reason='legacy_multi_person_identity_unbound'
+
+        shot_results.append({
+            'shot_id':rule.get('shot_id'),
+            'decision':decision,
+            'reason':reason,
+            'sample_count':len(indices),
+            'decoded_ratio':round(decoded_ratio,4),
+            'person_presence_ratio':round(presence_ratio,4),
+            'centered_ratio':round(centered_ratio,4),
+            'multiple_people_ratio':round(multiple_ratio,4),
+            'required_people_ratio':round(enough_people_ratio,4),
+            'target_binding_present':binding_present,
+            'target_binding_resolved':rule.get(
+                'target_binding_resolved'
+            ),
+            'samples':samples,
+        })
+
+    cap.release()
+
+    decisions=[x['decision'] for x in shot_results]
+
+    if 'RETRY' in decisions:
+        decision='RETRY'
+        reason='one_or_more_shots_need_reframe'
+    elif 'AMBIGUOUS' in decisions:
+        decision='AMBIGUOUS'
+        reason='one_or_more_shots_need_semantic_or_identity_review'
+    else:
+        decision='PASS'
+        reason='all_rendered_shots_pass'
+
+    return {
+        'version':POST_RENDER_AUDIT_VERSION,
+        'decision':decision,
+        'reason':reason,
+        'width':width,
+        'height':height,
+        'frame_count':frame_count,
+        'shots':shot_results,
+    }
+
+
+def validate_vertical(
+    path:Path,
+    expected:float,
+    plan:list[dict[str,Any]],
+    event:dict[str,Any],
+    audit_detector:Callable[[np.ndarray],list[dict[str,Any]]]=detect_people,
+)->dict[str,Any]:
+    cap=cv2.VideoCapture(str(path))
+    w,h=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    count=int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps=cap.get(cv2.CAP_PROP_FPS) or 24.
+    frames=[]
+
+    for i in {0,max(0,count//2),max(0,count-1)}:
+        cap.set(cv2.CAP_PROP_POS_FRAMES,i)
+        ok,x=cap.read()
+        frames.extend([x] if ok else [])
+
+    cap.release()
+
+    bars=any(
+        float(
+            np.mean(
+                cv2.cvtColor(x,cv2.COLOR_BGR2GRAY)<8
+            )
+        )>.92
+        for x in frames
+    )
+
+    per=[_shot_validation(x) for x in plan]
+
+    post_render=post_render_vertical_audit(
+        path,
+        plan,
+        detector=audit_detector,
+    )
+
+    post_render_ok=post_render.get('decision')=='PASS'
+
+    ok=(
+        path.exists()
+        and count>0
+        and w*4==h*3
+        and abs(count/fps-expected)<=1
+        and not bars
+        and all(x['status']=='PASS' for x in per)
+        and post_render_ok
+    )
+
+    sequence=[
+        rule
+        for rule in plan
+        if rule.get('interaction_requirement')=='sequence'
+    ]
+
+    sequence_ok=all(
+        (
+            (
+                x['focus_subject_present']
+                and x['focus_subject_safe']
+            )
+            if rule.get(
+                'required_person_focus',
+                rule.get('focus_subject')
+                in {'woman','man','multiple_people'},
+            )
+            else True
+        )
+        and x['action_preserved']
+        for x,rule in zip(per,plan)
+        if rule.get('interaction_requirement')=='sequence'
+    )
+
+    final_ok=ok and sequence_ok
+
+    return {
+        'status':'PASS' if final_ok else 'REVIEW',
+        'review_reason':(
+            None
+            if final_ok
+            else (
+                'POST_RENDER_RETRY'
+                if post_render.get('decision')=='RETRY'
+                else 'POST_RENDER_AMBIGUOUS'
+                if post_render.get('decision')=='AMBIGUOUS'
+                else 'REVIEW_VERTICAL'
+            )
+        ),
+        'width':w,
+        'height':h,
+        'aspect_ratio':'3:4' if w*4==h*3 else 'other',
+        'duration_seconds':count/fps,
+        'black_bars':bars,
+        'shots':per,
+        'sequence_interaction_preserved':sequence_ok,
+        'sequence_interaction_shots':[
+            x['shot_id'] for x in sequence
+        ],
+        'stable_per_shot':all(
+            x['crop_stable'] for x in per
+        ),
+        'semantic_retained':all(
+            x['interaction_preserved'] for x in per
+        ),
+        'post_render_audit':post_render,
+        'post_render_audit_version':POST_RENDER_AUDIT_VERSION,
+    }
 def thumbnail(video:Path,out:Path)->float:
     cap=cv2.VideoCapture(str(video)); count=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); fps=cap.get(cv2.CAP_PROP_FPS) or 24.; best=None; score=-1.; selected=1
     for i in [max(1,int(count*x)) for x in (.25,.5,.75)]:

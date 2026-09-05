@@ -3,7 +3,7 @@ from pathlib import Path
 import tomllib
 import cv2
 import numpy as np
-from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, _asset_metadata, _choose_target, _directive, _existing_registered_package, _horizontal_reuse_provenance, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, export_horizontal_from_source, letterbox, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, stream_copy_export_command, thumbnail, unletterbox_bbox, validate_vertical
+from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, POST_RENDER_AUDIT_VERSION, _asset_metadata, _choose_target, _directive, _existing_registered_package, _horizontal_reuse_provenance, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, export_horizontal_from_source, letterbox, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, stream_copy_export_command, thumbnail, unletterbox_bbox, validate_vertical
 from movie_broll.utils import sha256_file
 
 def event(position='left', people=None, interaction=None):
@@ -817,3 +817,201 @@ def test_legacy_focus_without_target_binding_keeps_existing_fallback(monkeypatch
     assert rule['target_binding_present'] is False
     assert rule['target_binding_resolved'] is None
     assert rule['tracking']['mode']=='bounded_linear'
+
+
+
+def _vertical_audit_video(path:Path):
+    writer=cv2.VideoWriter(
+        str(path),
+        cv2.VideoWriter_fourcc(*'mp4v'),
+        24,
+        (90,120),
+    )
+    for _ in range(24):
+        writer.write(
+            np.full((120,90,3),220,dtype=np.uint8)
+        )
+    writer.release()
+
+
+def _vertical_audit_rule(binding=True):
+    value={
+        'shot_id':'S1',
+        'render_start_frame':0,
+        'render_end_frame_exclusive':24,
+        'focus_subject':'woman',
+        'required_person_focus':True,
+        'directive_available':True,
+        'focus_bbox':{
+            'x':55,
+            'y':10,
+            'width':25,
+            'height':90,
+        },
+        'crop_width':90,
+        'source_width':160,
+        'x':35,
+        'anchors':[{'time':0.,'x':35.}],
+        'strategy':'subject_focus',
+        'action_preserved':True,
+        'interaction_requirement':'sequence',
+        'review_required':False,
+    }
+
+    if binding:
+        value.update({
+            'target_binding_present':True,
+            'target_binding_resolved':True,
+            'target_person_ids':['P1'],
+        })
+
+    return value
+
+
+def test_post_render_audit_observes_actual_vertical_subject(tmp_path):
+    import movie_broll.finalization as f
+
+    video=tmp_path/'vertical.mp4'
+    _vertical_audit_video(video)
+
+    detector=lambda frame:[
+        {
+            'detector':'yolo_person',
+            'confidence':.9,
+            'bbox':{
+                'x':30,
+                'y':15,
+                'width':30,
+                'height':90,
+            },
+        }
+    ]
+
+    audit=f.post_render_vertical_audit(
+        video,
+        [_vertical_audit_rule()],
+        detector=detector,
+    )
+
+    assert audit['version']==POST_RENDER_AUDIT_VERSION
+    assert audit['decision']=='PASS'
+    assert audit['shots'][0]['person_presence_ratio']==1.0
+    assert audit['shots'][0]['centered_ratio']==1.0
+
+
+def test_post_render_audit_retries_persistently_off_crop_subject(tmp_path):
+    import movie_broll.finalization as f
+
+    video=tmp_path/'vertical.mp4'
+    _vertical_audit_video(video)
+
+    detector=lambda frame:[
+        {
+            'detector':'yolo_person',
+            'confidence':.9,
+            'bbox':{
+                'x':0,
+                'y':15,
+                'width':12,
+                'height':90,
+            },
+        }
+    ]
+
+    audit=f.post_render_vertical_audit(
+        video,
+        [_vertical_audit_rule()],
+        detector=detector,
+    )
+
+    assert audit['decision']=='RETRY'
+    assert audit['shots'][0]['reason']=='focused_person_persistently_off_crop'
+
+
+def test_post_render_audit_never_passes_unbound_legacy_multi_person_identity(tmp_path):
+    import movie_broll.finalization as f
+
+    video=tmp_path/'vertical.mp4'
+    _vertical_audit_video(video)
+
+    detector=lambda frame:[
+        {
+            'detector':'yolo_person',
+            'confidence':.9,
+            'bbox':{
+                'x':8,
+                'y':15,
+                'width':20,
+                'height':90,
+            },
+        },
+        {
+            'detector':'yolo_person',
+            'confidence':.9,
+            'bbox':{
+                'x':35,
+                'y':15,
+                'width':25,
+                'height':90,
+            },
+        },
+    ]
+
+    audit=f.post_render_vertical_audit(
+        video,
+        [_vertical_audit_rule(binding=False)],
+        detector=detector,
+    )
+
+    assert audit['decision']=='AMBIGUOUS'
+    assert (
+        audit['shots'][0]['reason']
+        =='legacy_multi_person_identity_unbound'
+    )
+
+
+def test_validate_vertical_requires_post_render_audit_pass(tmp_path):
+    import movie_broll.finalization as f
+
+    video=tmp_path/'vertical.mp4'
+    _vertical_audit_video(video)
+
+    plan=[_vertical_audit_rule()]
+
+    centered=lambda frame:[
+        {
+            'detector':'yolo_person',
+            'confidence':.9,
+            'bbox':{
+                'x':30,
+                'y':15,
+                'width':30,
+                'height':90,
+            },
+        }
+    ]
+
+    passed=f.validate_vertical(
+        video,
+        1.,
+        plan,
+        {},
+        audit_detector=centered,
+    )
+
+    assert passed['status']=='PASS'
+    assert passed['post_render_audit']['decision']=='PASS'
+
+    missing=lambda frame:[]
+
+    failed=f.validate_vertical(
+        video,
+        1.,
+        plan,
+        {},
+        audit_detector=missing,
+    )
+
+    assert failed['status']=='REVIEW'
+    assert failed['review_reason']=='POST_RENDER_RETRY'
+    assert failed['post_render_audit']['decision']=='RETRY'
