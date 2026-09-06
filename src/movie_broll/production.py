@@ -341,12 +341,12 @@ def process(input_dir: Path, provider: Any = None, model: str = "gemini-3.6-flas
     ledger.log("PRODUCTION_STARTED", mode="production")
     ledger.log("PREFLIGHT_COMPLETE", mode="production")
     technical_started = time.monotonic()
-    shots = _technical_shots(info)
+    shots = _bounded_operation("technical-shots", lambda: _technical_shots(info), report, ledger)
     report(f"[movie-broll] technical shots: REUSED {len(shots)}")
     ledger.log("TECHNICAL_SHOTS_REUSED", mode="production", count=len(shots))
     _summary(info, ledger, [], "RUNNING", stage="technical_shots", segments_total=len(narrative_segments),
              timings={"technical_shots_seconds": time.monotonic()-technical_started}, technical_shot_count=len(shots))
-    store_path, store = _segment_store(info); all_events=[]; finals=[]; semantic_reports=[]
+    store_path, store = _segment_store(info); all_events=[]; finals=[]; semantic_reports=[]; detector_preflight_result=None
     try:
         for index, segment in enumerate(narrative_segments, 1):
             sid = segment["segment_id"]; record = store["segments"].setdefault(sid, {"status": "PENDING", "segment": segment})
@@ -380,8 +380,12 @@ def process(input_dir: Path, provider: Any = None, model: str = "gemini-3.6-flas
                     return stop_result
             apply_semantic_scarcity(events)
             ledger.log("SEMANTIC_COMPLETE", mode="production", segment_id=sid, complete=semantic.get("complete", 0))
-            if any(x.get("editorial",{}).get("decision")=="KEEP" and x.get("editorial",{}).get("status")=="VALIDATED" for x in events): person_detector_preflight()
-            final=finalize_pilot(input_dir,sid,candidates=events,shots={x["shot_id"]:x for x in shots}); finals.append(final)
+            detector_preflight=None
+            if any(x.get("editorial",{}).get("decision")=="KEEP" and x.get("editorial",{}).get("status")=="VALIDATED" for x in events):
+                if detector_preflight_result is None:
+                    detector_preflight_result=_bounded_operation("person-detector-preflight", person_detector_preflight, report, ledger)
+                detector_preflight=detector_preflight_result
+            final=finalize_pilot(input_dir,sid,candidates=events,shots={x["shot_id"]:x for x in shots},detector_preflight=detector_preflight); finals.append(final)
             if final.get("completed", 0): ledger.log("ASSET_COMPLETE", mode="production", segment_id=sid, assets=final["completed"])
             record.update(status="COMPLETE", completed_at=_utc(), finalization=final); write_json(store_path,store)
             ledger.log("SEGMENT_COMPLETE",mode="production",segment_id=sid,events=len(events)); _summary(info,ledger,all_events,"RUNNING",final,stage="segment_complete",segments_total=len(narrative_segments),segments_complete=index,technical_shot_count=len(shots))

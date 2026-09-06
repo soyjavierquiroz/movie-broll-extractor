@@ -3,7 +3,8 @@ from pathlib import Path
 import tomllib
 import cv2
 import numpy as np
-from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, POST_RENDER_AUDIT_VERSION, _asset_metadata, _choose_target, _directive, _existing_registered_package, _horizontal_reuse_provenance, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, export_horizontal_from_source, letterbox, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, stream_copy_export_command, thumbnail, unletterbox_bbox, validate_vertical
+import pytest
+from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, POST_RENDER_AUDIT_VERSION, _asset_metadata, _choose_target, _directive, _existing_registered_package, _horizontal_reuse_provenance, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, export_horizontal_from_source, finalize_pilot, letterbox, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, stream_copy_export_command, thumbnail, unletterbox_bbox, validate_vertical
 from movie_broll.utils import sha256_file
 
 def event(position='left', people=None, interaction=None):
@@ -207,6 +208,25 @@ def test_preflight_names_exact_missing_export_dependencies(monkeypatch,tmp_path)
     monkeypatch.setattr(f,'_model_path',lambda:tmp_path/'yolov5n.onnx'); monkeypatch.setattr(f,'_missing_detector_dependencies',lambda:['torchvision','Pillow','PyYAML'])
     import pytest
     with pytest.raises(RuntimeError,match='torchvision, Pillow, PyYAML'): f.person_detector_preflight()
+
+
+def test_finalize_standalone_runs_detector_preflight_without_prior_state(monkeypatch,tmp_path):
+    import movie_broll.finalization as f
+    source=tmp_path/'input'/'film'; source.mkdir(parents=True); (source/'movie.mp4').write_bytes(b'movie')
+    run=tmp_path/'runs'/'film'; run.mkdir(parents=True)
+    calls=[]
+    monkeypatch.setattr(f,'_source_movie_sha256',lambda *_:'a'*64)
+    import movie_broll.broll_pilot as pilot
+    monkeypatch.setattr(pilot,'shot_focus_compatible',lambda *_:True)
+    class Capture:
+        def __init__(self,*_): pass
+        def get(self,_): return 160
+        def release(self): pass
+    monkeypatch.setattr(f.cv2,'VideoCapture',Capture)
+    monkeypatch.setattr(f,'person_detector_preflight',lambda: calls.append(True) or (_ for _ in ()).throw(RuntimeError('detector preflight')))
+    with pytest.raises(RuntimeError,match='detector preflight'):
+        finalize_pilot(source,'N1',candidates=[event()],shots={})
+    assert calls == [True]
 
 def test_export_failure_keeps_useful_stderr_and_cleans_source(monkeypatch,tmp_path):
     import movie_broll.finalization as f

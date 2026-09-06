@@ -69,20 +69,53 @@ def load_shots(paths:dict[str,Any])->list[dict[str,Any]]:
     return result
 
 def visual_signals(movie:Path, shots:list[dict[str,Any]], sample_fps:float=SAMPLE_FPS)->list[dict[str,Any]]:
+    """Compute the original per-shot signals without retaining sampled frames.
+
+    The histogram intentionally remains the middle sampled frame's HSV histogram:
+    that is the historical definition, rather than an aggregate histogram.
+    """
     cap=cv2.VideoCapture(str(movie)); out=[]
-    for shot in shots:
-        frames=[]; t=float(shot['start_seconds']); end=float(shot['end_seconds'])
-        while t<end:
-            cap.set(cv2.CAP_PROP_POS_MSEC,t*1000); ok,frame=cap.read()
-            if ok: frames.append(frame)
-            t+=1/sample_fps
-        if not frames: raise RuntimeError(f"cannot decode {shot['shot_id']}")
-        gray=[cv2.cvtColor(f,cv2.COLOR_BGR2GRAY) for f in frames]
-        values=np.concatenate([g.ravel() for g in gray]); sharp=float(np.mean([cv2.Laplacian(g,cv2.CV_64F).var() for g in gray]))
-        motion=float(np.mean([np.mean(cv2.absdiff(a,b)) for a,b in zip(gray,gray[1:])])) if len(gray)>1 else 0.
-        hist=cv2.calcHist([cv2.cvtColor(frames[len(frames)//2],cv2.COLOR_BGR2HSV)],[0,1],None,[16,16],[0,180,0,256]); cv2.normalize(hist,hist)
-        out.append({'brightness_mean':float(values.mean()),'brightness_std':float(values.std()),'sharpness_score':sharp,'motion_score':motion,'near_black_fraction':float((values<20).mean()),'_hist':hist})
-    cap.release(); return out
+    try:
+        for shot in shots:
+            start,end=float(shot['start_seconds']),float(shot['end_seconds'])
+            sample_count=0; t=start
+            while t<end:
+                sample_count+=1; t+=1/sample_fps
+            # The batch code selected the middle *successfully decoded* frame.
+            # A bounded preliminary pass gives that index without retaining it.
+            successful_count=0
+            t=start
+            for _ in range(sample_count):
+                cap.set(cv2.CAP_PROP_POS_MSEC,t*1000); ok,_=cap.read()
+                successful_count+=int(ok)
+                t+=1/sample_fps
+            if not successful_count: raise RuntimeError(f"cannot decode {shot['shot_id']}")
+            target_index=successful_count//2
+            pixels=dark=frames=0; mean=m2=sharp_total=motion_total=0.; prev_gray=None; hist=None
+            t=start
+            for _ in range(sample_count):
+                cap.set(cv2.CAP_PROP_POS_MSEC,t*1000); ok,frame=cap.read()
+                t+=1/sample_fps
+                if not ok: continue
+                gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY); count=gray.size
+                # Parallel Welford merge preserves population std semantics while
+                # avoiding concatenating all sampled pixels.
+                batch_mean=float(gray.mean()); delta=batch_mean-mean
+                batch_m2=float(np.sum((gray.astype(np.float64)-batch_mean)**2))
+                new_pixels=pixels+count
+                mean+=delta*count/new_pixels
+                m2+=batch_m2+delta*delta*pixels*count/new_pixels
+                pixels=new_pixels; dark+=int(np.count_nonzero(gray<20)); frames+=1
+                sharp_total+=float(cv2.Laplacian(gray,cv2.CV_64F).var())
+                if prev_gray is not None: motion_total+=float(np.mean(cv2.absdiff(prev_gray,gray)))
+                prev_gray=gray
+                if frames-1==target_index:
+                    hist=cv2.calcHist([cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)],[0,1],None,[16,16],[0,180,0,256]); cv2.normalize(hist,hist)
+            if not frames: raise RuntimeError(f"cannot decode {shot['shot_id']}")
+            out.append({'brightness_mean':mean,'brightness_std':float(math.sqrt(m2/pixels)),'sharpness_score':sharp_total/frames,'motion_score':motion_total/(frames-1) if frames>1 else 0.,'near_black_fraction':dark/pixels,'_hist':hist})
+        return out
+    finally:
+        cap.release()
 
 def add_context(shots:list[dict[str,Any]], srt:Path, narrative:Path)->None:
     cues=parse_srt_file(srt).cues; segments=json.loads(narrative.read_text()).get('segments',[])

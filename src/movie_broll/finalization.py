@@ -1386,7 +1386,8 @@ def _existing_registered_package(run:Path,assets:Path,event:dict[str,Any])->bool
     except (OSError,KeyError,json.JSONDecodeError): return False
 def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False,
                    candidates:list[dict[str,Any]]|None=None,
-                   shots:dict[str,dict[str,Any]]|None=None)->dict[str,Any]:
+                   shots:dict[str,dict[str,Any]]|None=None,
+                   detector_preflight:dict[str,Any]|None=None)->dict[str,Any]:
     """Finalize validated events.
 
     ``candidates`` and ``shots`` are the production entry point.  Keeping the
@@ -1417,7 +1418,7 @@ def finalize_pilot(input_dir:Path,window_id:str,keep_debug_artifacts:bool=False,
         semantic_reused=semantic_validate(incompatible,input_dir/'movie.mp4',srt,narrative,pilot/'semantic_checkpoints',24.,window_id).get('reused',0)
         write_json(candidates_path,{'schema_version':'broll_pilot_candidates_v4','semantic_schema_version':'broll_semantics_v6','semantic_prompt_version':'broll_semantic_prompt_v6','window_id':window_id,'candidates':candidates})
     movie=input_dir/'movie.mp4'; source=cv2.VideoCapture(str(movie)); width,height=int(source.get(cv2.CAP_PROP_FRAME_WIDTH)),int(source.get(cv2.CAP_PROP_FRAME_HEIGHT)); fps=source.get(cv2.CAP_PROP_FPS) or 24.; source.release(); source_sha256=_source_movie_sha256(run,movie); ledger=ProcessingLedger(run,movie_id,{'finalization_version':'3e.2.3.4','reframe_algorithm_version':REFRAME_ALGORITHM_VERSION,'vertical_validation_version':VERTICAL_VALIDATION_VERSION,'movie_code':movie_code(run,movie_id)}); completed=review=reused=review_reused=horizontal_reused=failed_retryable=failed_final=0
-    if any(e.get('editorial',{}).get('decision')=='KEEP' and e.get('editorial',{}).get('status')=='VALIDATED' for e in candidates): person_detector_preflight()
+    if any(e.get('editorial',{}).get('decision')=='KEEP' and e.get('editorial',{}).get('status')=='VALIDATED' for e in candidates) and detector_preflight is None: person_detector_preflight()
     for e in candidates:
         if e.get('editorial',{}).get('decision')!='KEEP' or e.get('editorial',{}).get('status')!='VALIDATED':continue
         # Do not include reframe config here: register() would incorrectly stale

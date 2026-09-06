@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
 from movie_broll.cli import main
 def test_cli_help_and_missing_paths(capsys, tmp_path):
@@ -10,3 +12,9 @@ def test_cli_help_and_missing_paths(capsys, tmp_path):
 def test_schema_json():
  root=Path(__file__).parents[1]/"schemas"
  for path in root.glob("*.json"): assert json.loads(path.read_text())["$schema"]
+
+
+def test_module_entrypoint_runs_real_cli_help():
+ result=subprocess.run([sys.executable,"-m","movie_broll.cli","--help"],capture_output=True,text=True,check=False)
+ assert result.returncode == 0
+ assert "Manifest-first movie source inspection" in result.stdout

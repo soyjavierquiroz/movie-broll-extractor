@@ -38,10 +38,20 @@ def test_process_orchestrates_full_movie_and_reuses_same_source(monkeypatch, tmp
         return {"quota_exhausted": False, "status": "COMPLETE"}
     monkeypatch.setattr(production, "semantic_validate", semantics)
     monkeypatch.setattr(production, "apply_semantic_scarcity", lambda _: None)
-    monkeypatch.setattr(production, "person_detector_preflight", lambda: {})
-    monkeypatch.setattr(production, "finalize_pilot", lambda *a, **k: {"status": "COMPLETE", "completed": 1, "review": 0, "failed_final": 0})
+    detector_calls=[]
+    monkeypatch.setattr(production, "person_detector_preflight", lambda: detector_calls.append(True) or {"loaded": True})
+    finalized=[]
+    monkeypatch.setattr(production, "finalize_pilot", lambda *a, **k: finalized.append(k) or {"status": "COMPLETE", "completed": 1, "review": 0, "failed_final": 0})
+    bounded_labels = []
+    def bounded(label, action, report, ledger):
+        bounded_labels.append(label)
+        return action()
+    monkeypatch.setattr(production, "_bounded_operation", bounded)
     lines=[]; result = production.process(source, provider=object(), reporter=lines.append)
     assert result["status"] == "COMPLETE" and calls == [True]
+    assert "technical-shots" in bounded_labels
+    assert "person-detector-preflight" in bounded_labels and detector_calls == [True]
+    assert finalized[0]["detector_preflight"] == {"loaded": True}
     assert (info["run"] / "progress_summary.json").is_file()
     assert any("building Visual Events" in line for line in lines)
     assert "PRODUCTION_STARTED" in (info["run"] / "progress.jsonl").read_text()
@@ -60,6 +70,26 @@ def test_heartbeat_is_visible_and_logged(monkeypatch, tmp_path):
     assert production._bounded_operation("test", slow, lines.append, ledger) == "done"
     assert any("working" in line for line in lines)
     assert "PRODUCTION_HEARTBEAT" in (run / "progress.jsonl").read_text()
+
+
+def test_process_reuses_detector_preflight_across_segments(monkeypatch, tmp_path):
+    source=fixture(tmp_path)
+    narrative=tmp_path/'runs'/'film'/'narrative-v2'/'narrative_map.json'
+    narrative.write_text(json.dumps({'segments':[{'segment_id':'N1','start_seconds':0,'end_seconds':1},{'segment_id':'N2','start_seconds':1,'end_seconds':2}]}))
+    info={'movie':source/'movie.mp4','srt':source/'subtitles.srt','run':tmp_path/'runs'/'film','narrative':narrative,'movie_sha256':'a'*64,'srt_sha256':'b'*64,'metadata':{'video':{'fps':24,'width':160,'height':120},'duration_seconds':2}}
+    monkeypatch.setattr(production,'preflight',lambda _:info)
+    shots=[{'shot_id':'S1','start_seconds':0,'end_seconds':2,'start_frame':0,'end_frame_exclusive':48}]
+    monkeypatch.setattr(production,'_technical_shots',lambda _:shots)
+    def segment_events(_info, segment, _shots):
+        return [{'candidate_id':segment['segment_id'],'visual_event_id':f"VE_{segment['segment_id']}",'start_seconds':segment['start_seconds'],'end_seconds':segment['end_seconds'],'start_frame':0,'end_frame_exclusive':24,'source_shot_ids':['S1'],'editorial':{'decision':'KEEP','status':'VALIDATED'}}]
+    monkeypatch.setattr(production,'_segment_events',segment_events)
+    monkeypatch.setattr(production,'semantic_validate',lambda *a,**k:{'quota_exhausted':False,'status':'COMPLETE'})
+    monkeypatch.setattr(production,'apply_semantic_scarcity',lambda _:None)
+    calls=[]; monkeypatch.setattr(production,'person_detector_preflight',lambda:calls.append(True) or {'loaded':True})
+    monkeypatch.setattr(production,'finalize_pilot',lambda *a,**k:{'status':'COMPLETE','completed':0,'review':0,'failed_final':0})
+    monkeypatch.setattr(production,'_bounded_operation',lambda _label,action,_report,_ledger:action())
+    assert production.process(source,provider=object())['status']=='COMPLETE'
+    assert calls == [True]
 
 
 def test_source_change_retires_only_source_artifacts(tmp_path):

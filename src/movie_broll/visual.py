@@ -56,8 +56,12 @@ def select_smoke_windows(narrative:dict[str,Any], movie_duration:float, window_s
 def detect_cuts(movie:Path, start_frame:int, end_frame:int, threshold:float)->list[int]:
     from scenedetect import ContentDetector, open_video, SceneManager
     video=open_video(str(movie)); video.seek(start_frame)
-    manager=SceneManager(); manager.add_detector(ContentDetector(threshold=threshold)); manager.detect_scenes(video, end_time=end_frame)
-    return [cut.get_frames() for _,cut in manager.get_scene_list() if start_frame < cut.get_frames() < end_frame]
+    try:
+        manager=SceneManager(); manager.add_detector(ContentDetector(threshold=threshold)); manager.detect_scenes(video, end_time=end_frame)
+        return [cut.get_frames() for _,cut in manager.get_scene_list() if start_frame < cut.get_frames() < end_frame]
+    finally:
+        close=getattr(video,"close",None)
+        if callable(close): close()
 
 def build_shots(window:Window, fps:float, cuts:list[int], threshold:float)->list[dict[str,Any]]:
     start,end=_frame(window.start_seconds,fps),_frame(window.end_seconds,fps); boundaries=[start]+sorted(set(c for c in cuts if start<c<end))+[end]

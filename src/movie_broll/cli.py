@@ -43,6 +43,10 @@ def main(argv=None):
  select_next.add_argument("input_dir",help="input/<movie-id> directory")
  process_cmd=sub.add_parser("process",help="process one complete movie production job")
  process_cmd.add_argument("input_dir",help="input/<movie-id> directory containing canonical movie.mp4 and subtitles.srt")
+ supervise_cmd=sub.add_parser("supervise",help="supervise resumable complete movie production")
+ supervise_cmd.add_argument("input_dir",help="input/<movie-id> directory containing canonical movie.mp4 and subtitles.srt")
+ supervise_cmd.add_argument("--stale-timeout-seconds",type=float,default=1800,help="progress.jsonl stale timeout (default: 1800)")
+ supervise_cmd.add_argument("--grace-period-seconds",type=float,default=30,help="child termination grace period")
  reset_cmd=sub.add_parser("reset",help="remove derived production state while preserving the canonical narrative map")
  reset_cmd.add_argument("input_dir",help="canonical input/<movie-id> directory")
  reset_mode=reset_cmd.add_mutually_exclusive_group(required=True)
@@ -145,6 +149,12 @@ def main(argv=None):
    print(f"[process] status: {report['status']}")
    return 0 if report['status']=='COMPLETE' else 1
   except (OSError,ValueError,FileNotFoundError,RuntimeError,subprocess.CalledProcessError) as error: print(f"error: {error}",file=sys.stderr); return 2
+ if a.command == "supervise":
+  if a.stale_timeout_seconds <= 0 or a.grace_period_seconds < 0: print("error: timeouts must be positive",file=sys.stderr); return 2
+  try:
+   from .supervisor import supervise
+   return supervise(Path(a.input_dir),stale_timeout_seconds=a.stale_timeout_seconds,grace_period_seconds=a.grace_period_seconds)
+  except (OSError,ValueError,FileNotFoundError,RuntimeError) as error: print(f"error: {error}",file=sys.stderr); return 2
  movie,srt,run=Path(a.movie),Path(a.srt),Path(a.run_dir)
  for label,path in (("movie",movie),("SRT",srt)):
   if not path.is_file(): print(f"error: {label} file does not exist: {path}",file=sys.stderr);return 2
@@ -159,3 +169,7 @@ def main(argv=None):
   print("[inspect] movie: readable");print(f"[inspect] duration: {seconds//3600:02d}:{seconds%3600//60:02d}:{seconds%60:02d}");print(f"[inspect] video: {video['width']}x{video['height']} @ {video['fps'] or 'unknown'}");print(f"[inspect] audio tracks: {len(md['audio_tracks'])}");print(f"[inspect] srt cues: {len(parsed.cues)}");print(f"[inspect] srt timeline: {tv['status']}");print("[inspect] source_manifest.json: written");print("[inspect] srt_cues.jsonl: written");print("[inspect] status: COMPLETE");return 0
  except Exception as e:
   write_json(run/"run_manifest.json",{"schema_version":"run_manifest_v1","run_id":run_id,"command":"inspect","started_at":started,"completed_at":utc(),"status":"failed","producer":"movie_broll_extractor","producer_version":__version__,"outputs":{},"errors":[str(e)]});print(f"error: {e}",file=sys.stderr);return 1
+
+
+if __name__ == "__main__":
+ raise SystemExit(main())
