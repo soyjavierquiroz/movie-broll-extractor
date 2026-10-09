@@ -7,10 +7,10 @@ from movie_broll.broll_pilot import (PILOT_WINDOW, _narrative_context, apply_sem
 from movie_broll.cli import main
 from movie_broll.broll_semantics import validate_response
 
-def shot(n, start, end, similarity=1):
+def shot(n, start, end, similarity=1, **extra):
     return {'shot_id':f'S_{n}', 'start_seconds':start,'end_seconds':end,'duration_seconds':end-start,
       'brightness_mean':110,'sharpness_score':120,'motion_score':12,'near_black_fraction':.05,
-      'subtitle_occupancy_ratio':.1,'narrative_segment_ids':['N1'], '_hist':None}
+      'subtitle_occupancy_ratio':.1,'narrative_segment_ids':['N1'], '_hist':None,**extra}
 
 def fake_similarity(monkeypatch):
     import movie_broll.broll_pilot as m
@@ -64,8 +64,8 @@ def test_cli_invalid_window_returns_nonzero_before_analysis(monkeypatch,tmp_path
 
 def test_grouping_and_consecutive_max(monkeypatch):
     fake_similarity(monkeypatch)
-    xs=[shot(1,0,2),shot(2,2,5),shot(3,5,11),shot(4,11,27)]
-    assert generate_groups(xs)==[[0,1,2],[3]] # cuts do not force an event boundary
+    xs=[shot(1,0,2,continuous_action_id='pour_1'),shot(2,2,5,continuous_action_id='pour_1'),shot(3,5,11,continuous_action_id='pour_1'),shot(4,11,27)]
+    assert generate_groups(xs)==[[0,1,2],[3]] # explicit action evidence crosses cuts
 
 def test_candidate_order_scores_and_decisions(monkeypatch):
     fake_similarity(monkeypatch); xs=[shot(1,0,6),shot(2,6,12)]
@@ -106,7 +106,7 @@ def test_probe_validation_mock(monkeypatch,tmp_path):
     assert probe(p,1720,720,5)['status']=='PASS'
 
 def _semantic(decision='KEEP'):
-    return {'visual':{'summary_es':'Una persona mira una puerta','subjects':['persona'],'objects':['puerta'],'actions':['mirar una puerta'],'people_count_estimate':'1','setting':'interior','visible_interactions':[],'visible_emotions':['neutral'],'people':[{'presentation':'unclear','apparent_age_group':'unclear','frame_role':'primary','position':'center'}],'primary_subject_position':'center','primary_subject_description':'persona','visual_focus':'persona y puerta','shot_focus_plan':[{'shot_id':'S1','focus_subject':'environment','focus_reason':'puerta','preserve_secondary_subject':False,'interaction_requirement':'none','focus_position':'unclear'}]},'relationships':[],'editorial':{'standalone_meaning_es':'Una persona espera ante una puerta','reusable_broll':True,'action_or_moment_complete':'true','use_cases_es':['esperar ante una puerta'],'negative_use_cases_es':['no afirmar una llamada'],'search_terms_es':['esperar'],'editorial_confidence':'high','reason':'acción visible','decision':decision}}
+    return {'visual':{'summary_es':'Una persona mira una puerta','subjects':['persona'],'objects':['puerta'],'actions':['mirar una puerta'],'people_count_estimate':'1','setting':'interior','visible_interactions':[],'visible_emotions':['neutral'],'people':[{'presentation':'unclear','apparent_age_group':'unclear','frame_role':'primary','position':'center'}],'primary_subject_position':'center','primary_subject_description':'persona','visual_focus':'persona y puerta','shot_focus_plan':[{'shot_id':'S1','focus_subject':'environment','focus_reason':'puerta','preserve_secondary_subject':False,'interaction_requirement':'none','focus_position':'unclear'}]},'relationships':[],'editorial':{'standalone_meaning_es':'Una persona espera ante una puerta','reusable_broll':True,'action_or_moment_complete':'true','use_cases_es':['esperar ante una puerta'],'negative_use_cases_es':['no afirmar una llamada'],'search_terms_es':['esperar'],'editorial_confidence':'high','keep_qualification':{'action_evidence_type':'distinct_visible_action_or_reaction','action_evidence_es':'mirar una puerta','reusable_intent_type':'specific_visual_need','reusable_use_case_es':'esperar ante una puerta'},'reason':'acción visible','decision':decision}}
 
 def test_frame_bounds_are_authoritative_and_no_blind_offset(tmp_path):
     cmd=ffmpeg_export_command(Path('movie.mp4'),{'start_frame':240,'end_frame_exclusive':360},tmp_path/'x.mp4',24)
@@ -121,9 +121,46 @@ def test_semantic_contract_keeps_visual_and_narrative_separate():
 def test_visible_emotion_is_conservative_enum():
     data=_semantic(); data['visual']['visible_emotions']=['heartbroken']; assert 'invalid visible emotion' in validate_response(data)
 
-def test_final_keep_requires_semantic_gates_and_provider_failure_is_not_keep():
-    data=_semantic(); data['editorial']['action_or_moment_complete']='unclear'; assert 'KEEP lacks semantic usefulness' in validate_response(data)
+def test_final_keep_rejects_incomplete_non_reusable_content_and_provider_failure_is_not_keep():
+    data=_semantic(); data['editorial']['action_or_moment_complete']='false'; assert 'KEEP lacks semantic usefulness' in validate_response(data)
     data=_semantic(); data['editorial']['reusable_broll']=False; assert 'KEEP lacks semantic usefulness' in validate_response(data)
+
+def test_v9_generic_but_searchable_visual_can_validate_as_keep():
+    data=_semantic()
+    data['visual']['summary_es']='Una persona se acerca a otra sentada en una terraza al aire libre.'
+    data['visual']['actions']=['acercarse a una persona sentada']
+    data['editorial'].update({'standalone_meaning_es':'Una persona se acerca a otra sentada en una terraza al aire libre.','use_cases_es':['interacción casual al aire libre','ambientación de terraza'],'reason':'útil como plano recurso de ambientación o interacción cotidiana','keep_qualification':{'action_evidence_type':'generic_presence_or_movement','action_evidence_es':'acercarse a una persona sentada','reusable_intent_type':'generic_ambience_or_context','reusable_use_case_es':'interacción casual al aire libre'}})
+    assert validate_response(data) == []
+
+@pytest.mark.parametrize(('action','use_case'),[
+    ('caminar alejándose', 'persona caminando y alejándose'),
+    ('escribir en una hoja', 'persona escribiendo'),
+    ('sostener un teléfono y sonreír', 'persona usando un teléfono'),
+    ('descansar acostada en una cama', 'persona descansando en la cama'),
+    ('sentarse al volante', 'persona sentada al volante'),
+    ('escuchar y reaccionar sutilmente', 'reacción de escucha'),
+])
+def test_v9_ordinary_searchable_actions_are_not_rejected_as_generic(action,use_case):
+    data=_semantic()
+    data['visual']['actions']=[action]
+    data['editorial'].update({'standalone_meaning_es':action,'use_cases_es':[use_case],
+                              'keep_qualification':{'action_evidence_type':'generic_presence_or_movement',
+                                                    'action_evidence_es':action,
+                                                    'reusable_intent_type':'generic_ambience_or_context',
+                                                    'reusable_use_case_es':use_case}})
+    assert validate_response(data) == []
+
+@pytest.mark.parametrize(('action','use_case'),[
+    ('entregar un objeto a otra persona','entrega de un objeto entre dos personas'),
+    ('responder un teléfono','persona respondiendo una llamada telefónica'),
+    ('sentarse y empezar a escribir','persona sentándose para comenzar a escribir'),
+    ('abrazar y consolar a otra persona','consuelo físico entre dos personas'),
+])
+def test_specific_visibly_supported_editorial_moments_remain_keep(action,use_case):
+    data=_semantic()
+    data['visual']['actions']=[action]
+    data['editorial'].update({'standalone_meaning_es':action,'use_cases_es':[use_case],'keep_qualification':{'action_evidence_type':'distinct_visible_action_or_reaction','action_evidence_es':action,'reusable_intent_type':'specific_visual_need','reusable_use_case_es':use_case}})
+    assert validate_response(data) == []
 
 def test_semantic_checkpoint_reuse_and_reframe_metadata(tmp_path):
     import movie_broll.broll_pilot as b
@@ -142,6 +179,120 @@ def test_shot_focus_compatibility_requires_exact_complete_unique_coverage():
         {'shot_id':'S2','focus_subject':'woman','focus_reason':'reaction','preserve_secondary_subject':False,'interaction_requirement':'sequence','focus_position':'right'}]
     assert b.shot_focus_compatible(response,candidate)
     response['visual']['shot_focus_plan'][1]['shot_id']='S1'; assert not b.shot_focus_compatible(response,candidate)
+
+def test_single_canonical_shot_requires_one_matching_focus_directive():
+    import movie_broll.broll_pilot as b
+    response=_semantic()
+    assert b.shot_focus_compatible(response,{'source_shot_ids':['S1']})
+
+def test_shot_focus_diagnostics_identify_invalid_directive_and_non_list_plan():
+    import movie_broll.broll_pilot as b
+    response=_semantic(); del response['visual']['shot_focus_plan'][0]['focus_reason']
+    diagnostic=b.shot_focus_diagnostics(response,{'source_shot_ids':['S1']})
+    assert diagnostic['validation_reasons'] == ['invalid_directive']
+    assert diagnostic['invalid_directives'] == [{
+        'shot_id':'S1',
+        'invalid_fields':[{'field':'focus_reason','reason':'missing_required_field','expected':'present'}],
+    }]
+    response['visual']['shot_focus_plan']='S1'
+    diagnostic=b.shot_focus_diagnostics(response,{'source_shot_ids':['S1']})
+    assert diagnostic['validation_reasons'] == ['shot_focus_plan_not_list']
+    assert diagnostic['shot_focus_plan_not_list'] is True
+
+
+def test_real_multi_person_and_environment_directives_share_the_canonical_contract():
+    import movie_broll.broll_pilot as b
+    from movie_broll.broll_semantics import SEMANTIC_SCHEMA, validate_response
+
+    response=_semantic()
+    response['visual']['shot_focus_plan']=[
+        {
+            'focus_position':'left',
+            'focus_reason':'Plano detalle de un árbol genealógico escrito en papel colgado en una pared.',
+            'focus_subject':'environment',
+            'interaction_requirement':'none',
+            'preserve_secondary_subject':False,
+            'shot_id':'FULL_SHOT_0053',
+            'target_binding_confidence':'high',
+            'target_person_ids':[],
+        },
+        {
+            'focus_position':'multiple',
+            'focus_reason':'Dos hombres sentados en una mesa exterior en un patio.',
+            'focus_subject':'multiple_people',
+            'interaction_requirement':'none',
+            'preserve_secondary_subject':True,
+            'shot_id':'FULL_SHOT_0054',
+            'target_binding_confidence':'high',
+            'target_person_ids':['P1','P2'],
+        },
+    ]
+    candidate={'source_shot_ids':['FULL_SHOT_0053','FULL_SHOT_0054']}
+    evidence={'technical_shots':[
+        {'shot_id':'FULL_SHOT_0053','candidates':[]},
+        {'shot_id':'FULL_SHOT_0054','candidates':[{'person_id':'P1'},{'person_id':'P2'}]},
+    ]}
+
+    assert 'multiple' in SEMANTIC_SCHEMA['properties']['visual']['properties']['shot_focus_plan']['items']['properties']['focus_position']['enum']
+    assert validate_response(response) == []
+    assert b.shot_focus_diagnostics(response,candidate)['validation_reasons'] == []
+    assert b.target_binding_diagnostics(response,candidate,evidence) == []
+
+
+def test_shot_focus_diagnostic_keeps_invalid_enum_missing_field_and_unknown_person_precise():
+    import movie_broll.broll_pilot as b
+
+    response=_semantic()
+    directive=response['visual']['shot_focus_plan'][0]
+    directive.update({'focus_subject':'multiple_people','focus_position':'left'})
+    diagnostic=b.shot_focus_diagnostics(response,{'source_shot_ids':['S1']})
+    assert diagnostic['invalid_directives'] == [{
+        'shot_id':'S1',
+        'invalid_fields':[{
+            'field':'focus_position','value':'left',
+            'reason':'incompatible_focus_position','allowed':['multiple'],
+            'depends_on':{'focus_subject':'multiple_people'},
+        }],
+    }]
+
+    response=_semantic(); del response['visual']['shot_focus_plan'][0]['preserve_secondary_subject']
+    assert b.shot_focus_diagnostics(response,{'source_shot_ids':['S1']})['invalid_directives'][0]['invalid_fields'][0]['reason'] == 'missing_required_field'
+
+    response=_semantic(); directive=response['visual']['shot_focus_plan'][0]
+    directive.update({'focus_subject':'woman','focus_position':'left','target_person_ids':['P9'],'target_binding_confidence':'high'})
+    binding=b.target_binding_diagnostics(response,{'source_shot_ids':['S1']},{'technical_shots':[
+        {'shot_id':'S1','candidates':[{'person_id':'P1'}]},
+    ]})
+    assert binding == [{'shot_id':'S1','invalid_fields':[{
+        'field':'target_person_ids','value':['P9'],'reason':'unknown_person_id','allowed':['P1'],
+    }]}]
+
+@pytest.mark.parametrize('plan',[
+    [],
+    [
+        {'shot_id':'S1','focus_subject':'environment','focus_reason':'door','preserve_secondary_subject':False,'interaction_requirement':'none','focus_position':'unclear'},
+        {'shot_id':'S1','focus_subject':'environment','focus_reason':'door','preserve_secondary_subject':False,'interaction_requirement':'none','focus_position':'unclear'},
+    ],
+    [
+        {'shot_id':'S1','focus_subject':'environment','focus_reason':'door','preserve_secondary_subject':False,'interaction_requirement':'none','focus_position':'unclear'},
+        {'shot_id':'INVENTED','focus_subject':'environment','focus_reason':'door','preserve_secondary_subject':False,'interaction_requirement':'none','focus_position':'unclear'},
+    ],
+    [
+        {'shot_id':'AU_0001','focus_subject':'environment','focus_reason':'door','preserve_secondary_subject':False,'interaction_requirement':'none','focus_position':'unclear'},
+        {'shot_id':'S2','focus_subject':'environment','focus_reason':'door','preserve_secondary_subject':False,'interaction_requirement':'none','focus_position':'unclear'},
+    ],
+],ids=['missing_directive','duplicate_shot_id','invented_shot_id','derived_analysis_unit_id'])
+def test_shot_focus_compatibility_rejects_noncanonical_or_incomplete_coverage(plan):
+    import movie_broll.broll_pilot as b
+    response=_semantic(); response['visual']['shot_focus_plan']=plan
+    assert not b.shot_focus_compatible(response,{'source_shot_ids':['S1','S2']})
+
+@pytest.mark.parametrize('decision',['KEEP','REVIEW','REJECT'])
+def test_v7_decisions_preserve_valid_shot_focus_plan(decision):
+    import movie_broll.broll_pilot as b
+    response=_semantic(decision)
+    assert validate_response(response) == []
+    assert b.shot_focus_compatible(response,{'source_shot_ids':['S1']})
 
 def test_selected_window_flows_to_isolated_output_and_semantic_checkpoint(monkeypatch,tmp_path):
     import movie_broll.broll_pilot as b
@@ -225,10 +376,103 @@ def test_invalid_provider_focus_plan_has_two_bounded_resume_safe_attempts(monkey
     provider=Provider(); checkpoint=tmp_path/'broll-pilot-v1'/'SW_06'/'semantic_checkpoints'
     first=b.semantic_validate([_semantic_item(source_shot_id='SW_06_SHOT_0001')],movie,srt,narrative,checkpoint,24,'SW_06',provider)
     assert first['status'] == 'COMPLETE' and first['semantic_pending'] == 0 and first['semantic_failed_retryable'] == 1 and first['semantic_failed_final'] == 0 and first['remaining_count'] == 1
+    stage=json.loads((tmp_path/'processing_ledger.json').read_text())['events']['SW_06_VE_000001']['stages']['semantic']
+    assert stage['error'] == 'incomplete or mismatched shot focus plan'
     second=b.semantic_validate([_semantic_item(source_shot_id='SW_06_SHOT_0001')],movie,srt,narrative,checkpoint,24,'SW_06',provider)
     assert second['status'] == 'COMPLETE' and provider.calls == 2 and second['semantic_failed_retryable'] == 0 and second['semantic_failed_final'] == 1
     third=b.semantic_validate([_semantic_item(source_shot_id='SW_06_SHOT_0001')],movie,srt,narrative,checkpoint,24,'SW_06',provider)
     assert provider.calls == 2 and third['semantic_failed_final'] == 1
+
+def _semantic_failure_run(monkeypatch,tmp_path,response,source_shot_ids=('S1','S2')):
+    """Run one parsed semantic response through the normal failure path."""
+    import movie_broll.broll_pilot as b
+    from movie_broll.broll_semantics import SemanticResponse
+    movie,srt,narrative=_semantic_files(tmp_path)
+    monkeypatch.setattr(b,'candidate_contact_sheet',lambda *args:b'jpg')
+    class Provider:
+        identifier='fake'; model='fake'
+        def generate(self,*args):
+            return SemanticResponse(response,{'prompt_tokens':1,'response_tokens':2,'thinking_tokens':0,'cached_tokens':0,'total_tokens':3},provider='fake',model='fake')
+    item=_semantic_item(); item['source_shot_ids']=list(source_shot_ids)
+    checkpoint=tmp_path/'broll-pilot-v1'/'SW_06'/'semantic_checkpoints'
+    report=b.semantic_validate([item],movie,srt,narrative,checkpoint,24,'SW_06',Provider())
+    failure=checkpoint.parent/'semantic_failures'/'SW_06_VE_000001.json'
+    return b,item,checkpoint,report,failure
+
+def _two_shot_plan(second='S2'):
+    return [
+        {'shot_id':'S1','focus_subject':'environment','focus_reason':'door','preserve_secondary_subject':False,'interaction_requirement':'none','focus_position':'unclear'},
+        {'shot_id':second,'focus_subject':'environment','focus_reason':'door','preserve_secondary_subject':False,'interaction_requirement':'none','focus_position':'unclear'},
+    ]
+
+def test_semantic_failure_diagnostic_records_missing_focus_plan(monkeypatch,tmp_path):
+    response=_semantic(); del response['visual']['shot_focus_plan']
+    _,_,_,_,failure=_semantic_failure_run(monkeypatch,tmp_path,response)
+    data=json.loads(failure.read_text())
+    assert data['validation_reasons'] == ['visual missing shot_focus_plan','shot_focus_plan_missing']
+    assert data['actual_focus_plan_count'] is None and data['actual_focus_plan_shot_ids'] == []
+    assert data['shot_focus_plan_missing'] is True and data['shot_focus_plan_not_list'] is False
+    assert data['provider_semantic_response'] == response
+
+def test_semantic_failure_diagnostic_records_exact_invalid_directive_field(monkeypatch,tmp_path):
+    response=_semantic(); del response['visual']['shot_focus_plan'][0]['focus_reason']
+    _,_,_,_,failure=_semantic_failure_run(monkeypatch,tmp_path,response,source_shot_ids=('S1',))
+    data=json.loads(failure.read_text())
+    assert data['invalid_directives'] == [{
+        'shot_id':'S1',
+        'invalid_fields':[{
+            'field':'focus_reason','reason':'missing_required_field','expected':'present',
+        }],
+    }]
+
+def test_semantic_failure_diagnostic_records_focus_plan_cardinality(monkeypatch,tmp_path):
+    response=_semantic()
+    _,_,_,_,failure=_semantic_failure_run(monkeypatch,tmp_path,response)
+    data=json.loads(failure.read_text())
+    assert data['expected_canonical_shot_ids'] == ['S1','S2']
+    assert data['expected_focus_plan_count'] == 2 and data['actual_focus_plan_count'] == 1
+    assert data['missing_shot_ids'] == ['S2']
+    assert {'cardinality_mismatch','missing_canonical_shot'} <= set(data['validation_reasons'])
+
+def test_semantic_failure_diagnostic_records_duplicate_canonical_id(monkeypatch,tmp_path):
+    response=_semantic(); response['visual']['shot_focus_plan']=_two_shot_plan('S1')
+    _,_,_,_,failure=_semantic_failure_run(monkeypatch,tmp_path,response)
+    data=json.loads(failure.read_text())
+    assert data['duplicate_shot_ids'] == ['S1']
+    assert 'duplicate_shot_id' in data['validation_reasons']
+
+def test_semantic_failure_diagnostic_records_invented_id(monkeypatch,tmp_path):
+    response=_semantic(); response['visual']['shot_focus_plan']=_two_shot_plan('INVENTED')
+    _,_,_,_,failure=_semantic_failure_run(monkeypatch,tmp_path,response)
+    data=json.loads(failure.read_text())
+    assert data['unexpected_shot_ids'] == ['INVENTED']
+    assert 'unexpected_shot_id' in data['validation_reasons']
+
+def test_semantic_failure_diagnostic_records_derived_analysis_unit_id(monkeypatch,tmp_path):
+    response=_semantic(); response['visual']['shot_focus_plan']=_two_shot_plan('S2__VAU_001')
+    _,_,_,_,failure=_semantic_failure_run(monkeypatch,tmp_path,response)
+    data=json.loads(failure.read_text())
+    assert data['unexpected_shot_ids'] == ['S2__VAU_001']
+    assert 'derived/noncanonical_id' in data['validation_reasons']
+
+def test_valid_two_shot_focus_plan_writes_checkpoint_not_failure_artifact(monkeypatch,tmp_path):
+    response=_semantic(); response['visual']['shot_focus_plan']=_two_shot_plan()
+    _,_,checkpoint,report,failure=_semantic_failure_run(monkeypatch,tmp_path,response)
+    assert report['complete'] == 1 and (checkpoint/'BRC_0001.json').is_file()
+    assert not failure.exists()
+
+def test_semantic_failure_artifact_never_counts_as_checkpoint(monkeypatch,tmp_path):
+    response=_semantic(); response['visual']['shot_focus_plan']=_two_shot_plan('INVENTED')
+    b,item,checkpoint,report,failure=_semantic_failure_run(monkeypatch,tmp_path,response)
+    assert failure.is_file() and not (checkpoint/'BRC_0001.json').exists()
+    assert b._semantic_checkpoint(checkpoint/'BRC_0001.json',item,'gemini-3.6-flash','SW_06') is None
+    assert report['complete'] == 0 and report['semantic_failed_retryable'] == 1
+
+def test_semantic_failure_validation_reasons_are_unique(monkeypatch,tmp_path):
+    response=_semantic(); response['visual']['shot_focus_plan']=_two_shot_plan('S1')
+    _,_,_,_,failure=_semantic_failure_run(monkeypatch,tmp_path,response)
+    reasons=json.loads(failure.read_text())['validation_reasons']
+    assert len(reasons) == len(set(reasons))
 
 def test_namespaced_event_reuses_matching_checkpoint_fingerprint(monkeypatch,tmp_path):
     import movie_broll.broll_pilot as b
@@ -278,6 +522,23 @@ def test_semantic_scarcity_suppresses_only_nearby_same_meaning():
     apply_semantic_scarcity([winner,same,distinct])
     assert same['editorial']['decision']=='REJECT' and same['semantic_redundancy']['redundant_with']=='BRC_0001'
     assert distinct['editorial']['decision']=='KEEP'
+
+def test_incremental_semantic_scarcity_matches_one_global_priority_pass():
+    def item(identifier, score, start, meaning):
+        return {'candidate_id':identifier,'start_seconds':start,'end_seconds':start+5,'score':{'total':score},
+                'visual':{'setting':'cocina','actions':['hablar'],'visible_interactions':[]},'people':[], 'relationships':[],
+                'editorial':{'decision':'KEEP','status':'VALIDATED','standalone_meaning_es':meaning,'use_cases_es':[meaning]}}
+    def values():
+        return [item('A',100,0,'persona habla en cocina'), item('B',90,6,'persona habla en cocina'),
+                item('C',80,12,'persona cocina sola'), item('D',70,18,'persona cocina sola')]
+    global_items=values(); apply_semantic_scarcity(global_items)
+    incremental=values()
+    # This is the production operation for two priority batches: higher-priority
+    # accepted keepers plus the newly completed batch keepers.
+    apply_semantic_scarcity(incremental[:2])
+    accepted=[x for x in incremental[:2] if x['editorial']['decision']=='KEEP']
+    apply_semantic_scarcity(accepted + incremental[2:])
+    assert [(x['candidate_id'],x['editorial']['decision']) for x in incremental] == [(x['candidate_id'],x['editorial']['decision']) for x in global_items]
 
 def test_boundary_validation_fails_previous_frame_provenance(monkeypatch):
     import movie_broll.broll_pilot as b

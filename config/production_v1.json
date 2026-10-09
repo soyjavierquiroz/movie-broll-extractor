@@ -1,0 +1,44 @@
+{
+  "profile_version": "production_v1",
+  "active_picture": {
+    "enabled": true,
+    "sample_count": 18,
+    "dark_luma_max": 18,
+    "edge_coverage_required": 0.78,
+    "minimum_bar_pixels": 24,
+    "minimum_active_fraction": 0.55
+  },
+  "visual_events": {
+    "coherence_version": "visual_event_coherence_v4_scene_interaction",
+    "conservative_merge": true,
+    "maximum_duration_seconds": 18
+  },
+  "intrusive_text": {
+    "enabled": true,
+    "sample_count": 5,
+    "minimum_persistent_samples": 3,
+    "large_region_fraction": 0.045,
+    "subtitle_band_fraction": 0.025
+  },
+  "vertical": {
+    "aspect_ratio": "3:4",
+    "source": "active_picture",
+    "shot_aware_crop": true,
+    "face_safe": true,
+    "review_fallback": true
+  },
+  "assets": {
+    "package_members": 5,
+    "approved_destination": "assets",
+    "review_destination": "review"
+  },
+  "narrative": {
+    "target_chunk_duration_seconds": 600,
+    "overlap_seconds": 60,
+    "automatic": true
+  },
+  "quality": {
+    "hard_reject_categories": ["INTRUSIVE_BURNED_IN_TEXT", "credits", "titles", "dominant_transition_graphics"],
+    "context_dependency_policy": "reject_high_when_not_visually_standalone"
+  }
+}

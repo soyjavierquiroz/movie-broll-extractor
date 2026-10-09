@@ -54,6 +54,35 @@ def test_exit_zero_incomplete_restarts_then_complete(tmp_path):
     assert 'RESTART generation=2' in (run/'supervisor.log').read_text()
 
 
+def test_deterministic_process_outcome_stops_without_restart(tmp_path):
+    source,run=setup_run(tmp_path, {'status':'RUNNING','segments_complete':0,'segments_total':1})
+    clock=Clock(); calls=[]
+    def factory(*args, **kwargs):
+        calls.append(1)
+        (run/'process_outcome.json').write_text(json.dumps({'classification':'DETERMINISTIC','reason':'no usable canonical cue overlap'}))
+        return Process(10,[2])
+    assert Supervisor(source, clock=clock, sleeper=clock.sleep, process_factory=factory, poll_interval_seconds=0).run()==2
+    state=json.loads((run/'supervisor_state.json').read_text())
+    assert len(calls)==1 and state['classification']=='DETERMINISTIC' and state['terminal_reason']=='no usable canonical cue overlap'
+    summary=json.loads((run/'progress_summary.json').read_text())
+    assert summary['status']=='FAILED' and summary['run_state']=='FAILED'
+    assert summary['failure_classification']=='DETERMINISTIC'
+
+
+def test_transient_process_outcome_restarts(tmp_path):
+    source,run=setup_run(tmp_path, {'status':'RUNNING','segments_complete':0,'segments_total':1})
+    clock=Clock(); children=[Process(10,[2]),Process(11,[0])]; calls=[]
+    def factory(*args, **kwargs):
+        calls.append(1); child=children.pop(0)
+        if len(calls)==1:
+            (run/'process_outcome.json').write_text(json.dumps({'classification':'TRANSIENT','reason':'provider 429'}))
+        else:
+            (run/'progress_summary.json').write_text(json.dumps({'status':'COMPLETE','segments_complete':1,'segments_total':1}))
+        return child
+    assert Supervisor(source, clock=clock, sleeper=clock.sleep, process_factory=factory, poll_interval_seconds=0).run()==0
+    assert len(calls)==2 and 'RESTART generation=2' in (run/'supervisor.log').read_text()
+
+
 def test_watchdog_kills_group_then_restarts(tmp_path):
     source,run=setup_run(tmp_path, {'status':'RUNNING','segments_complete':0,'segments_total':1})
     clock=Clock(); first=Process(42,[None,None,None,None]); second=Process(43,[0]); killed=[]
@@ -79,13 +108,76 @@ def test_signal_stops_child_without_restart(tmp_path):
 
 
 def test_lock_prevents_second_supervisor(tmp_path):
-    source,_=setup_run(tmp_path)
+    source,run=setup_run(tmp_path, {'status':'RUNNING','run_state':'RUNNING','segments_complete':1,'segments_total':2})
+    before=(run/'progress_summary.json').read_bytes()
     import fcntl
     lock=(tmp_path/'runs'/'film'/'supervisor.lock').open('a+')
     fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
     with pytest.raises(RuntimeError, match='another supervisor'):
         Supervisor(source).run()
     lock.close()
+    assert (run/'progress_summary.json').read_bytes() == before
+
+
+def test_startup_recovers_stale_running_state_without_touching_resume_data(tmp_path):
+    source,run=setup_run(tmp_path, {
+        'status':'RUNNING', 'run_state':'RUNNING', 'stage':'visual-signals',
+        'visual_signal_units_complete':27, 'visual_signal_units_total':418,
+        'technical_shots':91, 'timings':{'visual_seconds':12.5}, 'source_hashes':{'movie':'abc'},
+    })
+    cache=run/'visual_signals_v2.json'; cache.write_text(json.dumps({'units':[{'shot_id':'S27'}]}))
+    technical=run/'technical_shots.json'; technical.write_text('{"shots":[]}')
+    narrative=run/'narrative-v2'/'narrative_map.json'; narrative.parent.mkdir(); narrative.write_text('{"segments":[]}')
+    asset=run/'assets'/'kept.mp4'; asset.parent.mkdir(); asset.write_bytes(b'asset')
+    originals={path: path.read_bytes() for path in (cache, technical, narrative, asset)}
+    observed=[]
+    def factory(*args, **kwargs):
+        recovered=json.loads((run/'progress_summary.json').read_text()); observed.append(recovered)
+        assert recovered['status'] == recovered['run_state'] == 'INTERRUPTED'
+        (run/'progress_summary.json').write_text(json.dumps({**recovered, 'status':'RUNNING', 'run_state':'RUNNING'}))
+        (run/'progress_summary.json').write_text(json.dumps({**recovered, 'status':'COMPLETE', 'run_state':'COMPLETE', 'segments_complete':2, 'segments_total':2}))
+        return Process(10,[0])
+    assert Supervisor(source, clock=Clock(), sleeper=lambda _: None, process_factory=factory).run() == 0
+    recovered=observed[0]
+    assert recovered['resume_safe'] is True and recovered['interruption_reason'] == 'stale_runtime_state_recovered'
+    assert recovered['previous_stage'] == 'visual-signals' and recovered['visual_signal_units_complete'] == 27
+    assert recovered['visual_signal_units_total'] == 418 and recovered['technical_shots'] == 91
+    assert recovered['timings'] == {'visual_seconds':12.5} and recovered['source_hashes'] == {'movie':'abc'}
+    assert all(path.read_bytes() == contents for path, contents in originals.items())
+
+
+def test_startup_recovers_stale_recorded_pid_and_preserves_batches_checkpoints_and_packages(tmp_path):
+    source,run=setup_run(tmp_path, {'status':'RUNNING','run_state':'RUNNING','owner_pid':999999999,
+                                    'production_batches_complete':58})
+    (run/'supervisor_state.json').write_text(json.dumps({'status':'RUNNING','run_state':'RUNNING','owner_pid':999999999}))
+    store=run/'visual_event_segments_v1.json'; store.write_text(json.dumps({'batches':{'PBATCH_0058':{'status':'COMPLETE'}}}))
+    checkpoint=run/'semantic_checkpoints'/'VE_1.json'; checkpoint.parent.mkdir(); checkpoint.write_text('{}')
+    package=run/'assets'/'asset.json'; package.parent.mkdir(); package.write_text('{}')
+    preserved={path:path.read_bytes() for path in (store,checkpoint,package)}
+    observed=[]
+    def before_start():
+        observed.append(json.loads((run/'supervisor_state.json').read_text()))
+    def factory(*_args, **_kwargs):
+        (run/'progress_summary.json').write_text(json.dumps({'status':'COMPLETE','segments_complete':1,'segments_total':1}))
+        return Process(10,[0])
+    assert Supervisor(source,clock=Clock(),sleeper=lambda _:None,process_factory=factory,before_start=before_start).run()==0
+    assert observed[0]['status']==observed[0]['run_state']=='INTERRUPTED'
+    assert all(path.read_bytes()==contents for path,contents in preserved.items())
+
+
+def test_startup_refuses_orphaned_active_production_process(tmp_path):
+    source,run=setup_run(tmp_path, {'status':'RUNNING','run_state':'RUNNING'})
+    before=(run/'progress_summary.json').read_bytes()
+    with pytest.raises(RuntimeError, match='active production process'):
+        Supervisor(source, active_process_checker=lambda _: True).run()
+    assert (run/'progress_summary.json').read_bytes() == before
+
+
+def test_terminal_summary_is_not_rewritten_as_stale(tmp_path):
+    source,run=setup_run(tmp_path, {'status':'COMPLETE','run_state':'COMPLETE','segments_complete':1,'segments_total':1})
+    before=(run/'progress_summary.json').read_bytes()
+    assert Supervisor(source, clock=Clock(), sleeper=lambda _: None, process_factory=lambda *a, **k: Process(10,[0])).run() == 0
+    assert (run/'progress_summary.json').read_bytes() == before
 
 
 def _batch(frames):

@@ -2,8 +2,10 @@ import inspect
 import json
 from pathlib import Path
 
-from movie_broll.narrative import normalize_llm_v2_response
-from movie_broll.narrative_consolidate import Segment, _choose_seam, _reconcile_boundary, consolidate_narrative, validate_consolidated_map
+import pytest
+
+from movie_broll.narrative import normalize_llm_v3_response
+from movie_broll.narrative_consolidate import Segment, _choose_seam, _concatenate_canonical_gap, _reconcile_boundary, consolidate_narrative, validate_consolidated_map
 from movie_broll.utils import write_json, write_jsonl
 
 
@@ -17,16 +19,16 @@ def _segment(chunk, ident, first, last, chunk_first=0, chunk_last=19, continuity
     return Segment(chunk, ident, first, last, payload, chunk_first, chunk_last)
 
 
-def _case(tmp_path, monkeypatch, left, right):
+def _case(tmp_path, monkeypatch, left, right, right_start=6):
     monkeypatch.chdir(tmp_path); input_dir = tmp_path / "input" / "pilot"; input_dir.mkdir(parents=True)
     root = tmp_path / "runs" / "pilot"; raw_cues = [{"cue_id": f"SRT_{i:06d}", "source_index": i, "start_seconds": float(i), "end_seconds": float(i) + .5, "text": f"cue {i}"} for i in range(1, 21)]
     (root / "source-inspect-v1").mkdir(parents=True); write_jsonl(root / "source-inspect-v1" / "srt_cues.jsonl", raw_cues)
     run = root / "narrative-v2"; write_json(run / "narrative_run.json", {"provider": "fixture", "model": "fixture", "prompt_version": "fixture", "window_seconds": 10, "overlap_seconds": 4})
-    for chunk_id, selected, specs, start, end in (("NCHUNK_0001", raw_cues[:10], left, 0, 10), ("NCHUNK_0002", raw_cues[6:], right, 6, 20)):
+    for chunk_id, selected, specs, start, end in (("NCHUNK_0001", raw_cues[:10], left, 0, 10), ("NCHUNK_0002", raw_cues[right_start:], right, right_start, 20)):
         data = {"schema_version": "srt_narrative_input_v1", "movie_id": "pilot", "source": {"type": "external_srt", "literal_transcription": False, "timing_reliability": "good", "language": "es"}, "chunk": {"chunk_id": chunk_id, "start_seconds": start, "end_seconds": end, "target_window_seconds": 10, "overlap_seconds": 4}, "cues": selected}
         write_json(run / "chunks" / f"{chunk_id}.input.json", data)
-        semantic = lambda row: {"first_cue_id": f"SRT_{row[0]:06d}", "last_cue_id": f"SRT_{row[1]:06d}", "segment_type": "conversation", "narrative_summary_es": row[4], "narrative_tone": "serious", "narrative_function": "conversation", "context_dependency": "medium", "continuity_previous": row[2], "continuity_next": row[3], "possible_visual_opportunities": ["conversation"]}
-        write_json(run / "maps" / f"{chunk_id}.narrative_map.json", normalize_llm_v2_response(data, {"schema_version": "narrative_mapper_llm_v2", "chunk_summary_es": "Resumen.", "segments": [semantic(row) for row in specs]}))
+        semantic = lambda row: {"first_cue_id": f"SRT_{row[0]:06d}", "last_cue_id": f"SRT_{row[1]:06d}", "segment_type": "conversation", "narrative_summary_es": row[4], "situation_es": row[4], "participants_es": "Interlocutores no identificados.", "interaction_action_es": "Conversan.", "location_context_es": "No inferible por los subtítulos.", "narrative_tone": "serious", "narrative_function": "conversation", "context_dependency": "medium", "continuity_previous": row[2], "continuity_next": row[3], "continuity_rationale_es": "Intercambio continuo.", "transition_reason_start": "chunk_start" if row[0] == 1 else "continues_prior_situation", "boundary_reason_end": "chunk_end", "long_segment_reason": None, "possible_visual_opportunities": ["conversation"]}
+        write_json(run / "maps" / f"{chunk_id}.narrative_map.json", normalize_llm_v3_response(data, {"schema_version": "narrative_mapper_llm_v3", "chunk_summary_es": "Resumen.", "segments": [semantic(row) for row in specs]}))
     return consolidate_narrative(input_dir, output=lambda _: None), root / "source-inspect-v1" / "srt_cues.jsonl", run
 
 
@@ -49,6 +51,16 @@ def test_bridge_winners_and_opposing_suppression_are_deterministic():
     _, evidence = _reconcile_boundary([left], [right], 9); assert evidence["bridge_winner"] == "L:left"
 
 
+def test_consolidation_preserves_an_explicit_mapper_situation_boundary():
+    broad_left = _segment("L", "broad", 1, 12, 0, 19)
+    focused_right = _segment("R", "after", 9, 16, 6, 19, continuity=("new_interaction", "unknown"))
+    retained, evidence = _reconcile_boundary([broad_left], [focused_right], 8)
+    assert evidence["preserved_mapper_boundary"] is True
+    assert evidence["bridge_winner"] is None
+    assert [(item.first, item.last) for item in retained] == [(1, 8), (9, 16)]
+    assert evidence["clipped_for_overlap_ownership"]
+
+
 def test_one_to_many_does_not_union_and_gaps_are_allowed(tmp_path, monkeypatch):
     report, cues, run = _case(tmp_path, monkeypatch, [(1, 10, "unknown", "same_interaction", "one")], [(7, 8, "same_interaction", "new_interaction", "a"), (9, 15, "new_interaction", "unknown", "b")])
     result = json.loads((run / "narrative_map.json").read_text())
@@ -62,6 +74,25 @@ def test_provenance_ids_and_rerun_are_stable(tmp_path, monkeypatch):
     assert report["status"] == rerun["status"] == "PASS" and (run / "narrative_map.json").read_bytes() == first
     assert [x["segment_id"] for x in result["segments"]] == [f"NARR_{i:06d}" for i in range(1, len(result["segments"]) + 1)]
     assert all(x["semantic_source"] == x["source_segments"][0] for x in result["segments"]) and validate_consolidated_map(result, cues) == []
+
+
+def test_zero_cue_overlap_from_a_real_subtitle_gap_concatenates(tmp_path, monkeypatch):
+    report, cues, run = _case(tmp_path, monkeypatch, [(1, 10, "unknown", "outside_chunk", "left")], [(11, 20, "outside_chunk", "unknown", "right")], right_start=10)
+    result = json.loads((run / "narrative_map.json").read_text())
+    assert report["status"] == "PASS"
+    assert report["chunk_boundaries"][0]["seam_type"] == "canonical_gap"
+    assert validate_consolidated_map(result, cues) == []
+
+
+def test_one_shared_cue_uses_a_deterministic_seam(tmp_path, monkeypatch):
+    report, _, _ = _case(tmp_path, monkeypatch, [(1, 10, "unknown", "outside_chunk", "left")], [(10, 20, "outside_chunk", "unknown", "right")], right_start=9)
+    assert report["status"] == "PASS"
+    assert report["chunk_boundaries"][0]["seam_type"] == "single_cue_overlap"
+
+
+def test_conflicting_overlap_is_not_treated_as_a_canonical_gap():
+    with pytest.raises(ValueError, match="conflicting overlapping cue coverage"):
+        _concatenate_canonical_gap([_segment("L", "left", 1, 10)], [_segment("R", "right", 10, 15)])
 
 
 def test_no_movie_specific_logic():

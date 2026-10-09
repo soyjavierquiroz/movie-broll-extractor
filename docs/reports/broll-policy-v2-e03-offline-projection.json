@@ -1,0 +1,2842 @@
+{
+  "schema_version": "broll_policy_v2_offline_projection",
+  "policy_version": "broll_policy_v2",
+  "total_events": 175,
+  "cached": 175,
+  "missing": 0,
+  "counts": {
+    "KEEP": 6,
+    "REVIEW": 147,
+    "REJECT": 21,
+    "PROVIDER_BLOCKED": 1
+  },
+  "asset_window_count": 6,
+  "decisions": {
+    "VE_77587b7328fe0c4a": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_da14f93605898b7f": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:title_card",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_fc73488efeb90cb3": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_ce865311d8a14107": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_5323966610e1583a": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_1fdc590d300b260f": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_ea6d3919c585fe80": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_f6a1dc77dc7bccf9": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_cf8f5537477c7c29": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_fddbf5f0841708fa": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_3666fcaafc03e618": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_7103dc3ef60622a0": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_3dc28f49d13b80fe": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_b646a9e68d066cda": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_bc2aac6ceac6f3ab": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_95a4b36031651795": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "KEEP",
+      "policy_reasons": [
+        "visually_reusable_moment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": [
+        {
+          "event_id": "VE_95a4b36031651795",
+          "moment_id": "VE_95a4b36031651795:saved_moment",
+          "utility_class": "useful_state",
+          "reuse_key": "('useful_state', ['Several people are grouped closely together outdoors; two people in the foreground lean against one another.'], ['Two foreground people are leaning against one another.'], [])",
+          "start_frame": 5170,
+          "end_frame_exclusive": 5315,
+          "start_seconds": 215.41666666666666,
+          "end_seconds": 221.45833333333334,
+          "duration_seconds": 6.041666666666667,
+          "source_shot_ids": [
+            "FULL_SHOT_0046"
+          ],
+          "action_completeness": "false",
+          "moment_usability": "usable",
+          "asset_window_complete": "true",
+          "duration_exception": false
+        }
+      ],
+      "window_review": [],
+      "suppressed": [],
+      "targeted_reobservation": false
+    },
+    "VE_a7b52988034f0aab": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:title_card",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_cdf813c6881e8db6": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_430431630018358c": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_4cfb1235b5661a07": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_c83a7eb2001ac375": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_4952606c4f5e872c": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_4d6265c62b63eba7": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_5534efbdd8087569": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_fb269c199f4725b9": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_22c176355d02758c": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_413b208ee766a6ee": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_43dc88f653f657e0": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_e9b04726f988ca9f": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_0eebfca158f1067e": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_10274d179a756136": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_d63b344de49ca902": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_a9c45bcea8ce4bc4": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_e6fde2d9deaa2478": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_3c0351af9f211a9c": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_22f87e98d96847a5": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_f3e5adfd059c66d1": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_3762828db5d6807c": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_1561653b3d1d05d3": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_ba6898a01634d065": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "KEEP",
+      "policy_reasons": [
+        "visually_reusable_moment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": [
+        {
+          "event_id": "VE_ba6898a01634d065",
+          "moment_id": "VE_ba6898a01634d065:saved_moment",
+          "utility_class": "useful_state",
+          "reuse_key": "('useful_state', ['A woman and a man stand close together in a warmly lit indoor setting; other people are visible in the background.'], [], [])",
+          "start_frame": 13210,
+          "end_frame_exclusive": 13535,
+          "start_seconds": 550.4166666666666,
+          "end_seconds": 563.9583333333334,
+          "duration_seconds": 13.541666666666666,
+          "source_shot_ids": [
+            "FULL_SHOT_0111"
+          ],
+          "action_completeness": "false",
+          "moment_usability": "usable",
+          "asset_window_complete": "true",
+          "duration_exception": false
+        }
+      ],
+      "window_review": [],
+      "suppressed": [],
+      "targeted_reobservation": false
+    },
+    "VE_6adcef328faa6132": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_e9dd6abe0b8b5a3d": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_7f6e40263fa60685": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_cef43ced525829f2": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_d89ae755f5097eb8": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_a9fa9d840e220dfb": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_fea87474d5222b2e": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_036c2e5a426abc6c": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_4da6a28531138dbb": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "KEEP",
+      "policy_reasons": [
+        "visually_reusable_moment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": [
+        {
+          "event_id": "VE_4da6a28531138dbb",
+          "moment_id": "VE_4da6a28531138dbb:saved_moment",
+          "utility_class": "physical_interaction",
+          "reuse_key": "('physical_interaction', ['A woman and a man face each other at close range outdoors; a third person is visible at the far right edge.'], ['The woman and man kiss.'], [])",
+          "start_frame": 16031,
+          "end_frame_exclusive": 16375,
+          "start_seconds": 667.9583333333334,
+          "end_seconds": 682.2916666666666,
+          "duration_seconds": 14.333333333333334,
+          "source_shot_ids": [
+            "FULL_SHOT_0124"
+          ],
+          "action_completeness": "true",
+          "moment_usability": "usable",
+          "asset_window_complete": "true",
+          "duration_exception": false
+        }
+      ],
+      "window_review": [],
+      "suppressed": [],
+      "targeted_reobservation": false
+    },
+    "VE_94bcb0592b8ff001": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_eb63cf8644caed41": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_27d207a1064a8d8a": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_e22e08d563482359": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_21e23c84e197454a": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_dd3fa2ed4170a810": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_ab09fb7ca6f1c705": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_a3432e4d5c68aace": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_31f3ecf6cb42b6eb": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_678195598e1a83b9": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_f01f4ccd34caddb0": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_7a620737d3f6a45c": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_9dc3f15e9194573e": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_d34fa24009d0c7c5": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "KEEP",
+      "policy_reasons": [
+        "visually_reusable_moment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": [
+        {
+          "event_id": "VE_d34fa24009d0c7c5",
+          "moment_id": "VE_d34fa24009d0c7c5:saved_moment",
+          "utility_class": "useful_state",
+          "reuse_key": "('useful_state', ['A woman with long dark hair remains in a close-up, looking slightly off-camera; her expression is serious and attentive.'], [], [])",
+          "start_frame": 21218,
+          "end_frame_exclusive": 21315,
+          "start_seconds": 884.0833333333334,
+          "end_seconds": 888.125,
+          "duration_seconds": 4.041666666666667,
+          "source_shot_ids": [
+            "FULL_SHOT_0172"
+          ],
+          "action_completeness": "false",
+          "moment_usability": "usable",
+          "asset_window_complete": "true",
+          "duration_exception": true
+        }
+      ],
+      "window_review": [],
+      "suppressed": [],
+      "targeted_reobservation": false
+    },
+    "VE_deb291f0154a67fd": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_f4ea6824120284a6": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_4e353683862416f8": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_ef0fc3d872dbf85a": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_60453a2047ffbb02": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_6169243ef6e6b86d": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_ceffb7146bcf56b6": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_ffed7bf342e9df6e": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_455e31f49c700cf6": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_37d98428641e865e": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "KEEP",
+      "policy_reasons": [
+        "visually_reusable_moment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": [
+        {
+          "event_id": "VE_37d98428641e865e",
+          "moment_id": "VE_37d98428641e865e:saved_moment",
+          "utility_class": "useful_state",
+          "reuse_key": "('useful_state', ['Several people are standing in a clothing shop among clothing racks.', 'A woman in a pink top stands beside a clothing rack.'], [], [])",
+          "start_frame": 24569,
+          "end_frame_exclusive": 24876,
+          "start_seconds": 1023.7083333333334,
+          "end_seconds": 1036.5,
+          "duration_seconds": 12.791666666666666,
+          "source_shot_ids": [
+            "FULL_SHOT_0188"
+          ],
+          "action_completeness": "false",
+          "moment_usability": "usable",
+          "asset_window_complete": "true",
+          "duration_exception": false
+        }
+      ],
+      "window_review": [],
+      "suppressed": [],
+      "targeted_reobservation": false
+    },
+    "VE_5898d4b8c0ef923c": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_fa0e656946a0e79a": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_41e410dc1a458c85": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_93d64ce3c3aa10a9": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_d6bc865001f7b88f": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_b94e2d9cf3f8324c": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_91b59b7f3a3133c9": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_f39df9bf6d8fdcaa": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_ee0690db1153bf95": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "KEEP",
+      "policy_reasons": [
+        "visually_reusable_moment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": [
+        {
+          "event_id": "VE_ee0690db1153bf95",
+          "moment_id": "VE_ee0690db1153bf95:saved_moment",
+          "utility_class": "useful_state",
+          "reuse_key": "('useful_state', ['A woman is seated or leaning near a counter in a warmly lit interior.', 'Another person is partially visible nearby.', 'A small box or case rests on a surface.'], [], [])",
+          "start_frame": 27335,
+          "end_frame_exclusive": 27653,
+          "start_seconds": 1138.9583333333333,
+          "end_seconds": 1152.2083333333333,
+          "duration_seconds": 13.25,
+          "source_shot_ids": [
+            "FULL_SHOT_0210"
+          ],
+          "action_completeness": "false",
+          "moment_usability": "usable",
+          "asset_window_complete": "true",
+          "duration_exception": false
+        }
+      ],
+      "window_review": [],
+      "suppressed": [],
+      "targeted_reobservation": false
+    },
+    "VE_7d15be7d118c29e2": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_6482d681400a791a": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_075a7043f8249842": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_d99d139ddb21ddab": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_da473c6b23075d13": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_ee0f90fc160a001b": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_cff13ff54c751698": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_e4edb804f48c722a": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_bf0ae67a1854fe6c": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_502d90b3c61cb1d1": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_28a11c26ca627b00": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_72cdb851543b63b4": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_7e6dd4e1eb7fc13e": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_3fdc4eeffe0f282b": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_2e2ba51dd918c5f3": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_f47af4c565d599a1": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_daf9d9c3acf2a7a5": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_db8c9d6170136a5f": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_38b5b149c0ed7c3a": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_d4bae15d70154654": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_ff05e614de0fdb57": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_45f9c1961fa1f87f": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_b0c8e931be7fde98": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_6d2731f2deed61e0": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_367c4e40f21302c3": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_c8f0c6bfe7d22b3d": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_d079ec23c68803f6": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_0c9664d210ff00f4": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_6f8804e5476409a9": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_eb9811cda0f7ddd7": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_9c70480a88be1a96": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_cca53571fb50b6c3": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_4933b2d037feb15d": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_b23c4d150806546f": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_351515781f92a0af": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_862733144cde8e89": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_80cb3b9aeb6c8771": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_9e3335bddf8750ae": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_02b18ec5998a7948": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_2707b99a490a0f5d": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_41f4c16fe807add4": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_c2eb1d8445665ac4": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_0e206da13b88a6e9": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_f8a4c9c267957bf4": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_76f5fc94e77ac29a": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_d90c79d14956e529": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_836aecea13b6a865": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_addc7b4dbeeff363": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_05b34d32b0473fab": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_965ad3ed6a1454d5": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_55bfc7a8eea292a7": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_6ea9fc23143bbccc": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_da1576edd9ef3f4a": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_9602f78a443a72d8": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "visual_vs_narrative_context_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_4048a71889566844": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_c577ed61805e01eb": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_70fd22342a4e8c76": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_c449ff8abae0d894": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "visual_vs_narrative_context_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_3a272e707a780d51": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_77dfa2ccb5425dee": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_67e8a4deef085f17": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_af2c07e8386ef049": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "visual_vs_narrative_context_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_84a221dc116d7896": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "PROVIDER_BLOCKED",
+      "policy_reasons": [
+        "provider_input_quarantine",
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": false
+    },
+    "VE_d2303630d50bc5c7": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_a7eb500b99e0cce3": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_aa927e53fdc4b6e5": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_e213cc4df9ccd858": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_369e6a3fb044d48c": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_be5e09733956dc85": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_aac97b1bc68285aa": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_bdb0c1fe28b34fbb": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_4dddd75813ede461": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "missing_temporal_visual_moments"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_73749fa7963f1b87": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_ff4c678c022845c1": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_1b188c4d4fae4312": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REVIEW",
+      "policy_reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "targeted_reobservation": true
+    },
+    "VE_ac57cd34caceaa86": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:black_or_empty"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_fc761fbed78ad784": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_341c1805c0ad810d": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_b7c9a50ef59e2c53": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_3c4bcb0c4ff4313d": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_c9af93ead12303b2": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_d98a0edf6c9b17a0": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_6b710719966e05c9": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_df9150dd0323e809": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_0575d1a79e01e20a": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_c16c09a4764a5b96": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_674223d953858ff0": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_00f20ea5470fa2fd": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:logo",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_2c37625cea14e68c": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:black_or_empty"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_96cefca9c8a68896": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:logo",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_bc1b844e15cbbe8f": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:logo",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_e6854e896018686f": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:logo",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    },
+    "VE_63d31ac106a6179e": {
+      "policy_version": "broll_policy_v2",
+      "policy_decision": "REJECT",
+      "policy_reasons": [
+        "hard_exclusion:credits",
+        "hard_exclusion:logo",
+        "hard_exclusion:dominant_text"
+      ],
+      "policy_cost_usd": 0.0,
+      "provider_requests": 0,
+      "asset_windows": []
+    }
+  },
+  "targeted_reobservation": [
+    {
+      "event_id": "VE_fc73488efeb90cb3",
+      "reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ]
+    },
+    {
+      "event_id": "VE_ce865311d8a14107",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_5323966610e1583a",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_1fdc590d300b260f",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_ea6d3919c585fe80",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_f6a1dc77dc7bccf9",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_cf8f5537477c7c29",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_fddbf5f0841708fa",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_3666fcaafc03e618",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_7103dc3ef60622a0",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_3dc28f49d13b80fe",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_b646a9e68d066cda",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_bc2aac6ceac6f3ab",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_cdf813c6881e8db6",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_430431630018358c",
+      "reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ]
+    },
+    {
+      "event_id": "VE_4cfb1235b5661a07",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_c83a7eb2001ac375",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_4952606c4f5e872c",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_4d6265c62b63eba7",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_5534efbdd8087569",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_fb269c199f4725b9",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_22c176355d02758c",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_413b208ee766a6ee",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_43dc88f653f657e0",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_e9b04726f988ca9f",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_0eebfca158f1067e",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_10274d179a756136",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_d63b344de49ca902",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_a9c45bcea8ce4bc4",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_e6fde2d9deaa2478",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_3c0351af9f211a9c",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_22f87e98d96847a5",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_f3e5adfd059c66d1",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_3762828db5d6807c",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_1561653b3d1d05d3",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_6adcef328faa6132",
+      "reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ]
+    },
+    {
+      "event_id": "VE_e9dd6abe0b8b5a3d",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_7f6e40263fa60685",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_cef43ced525829f2",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_d89ae755f5097eb8",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_a9fa9d840e220dfb",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_fea87474d5222b2e",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_036c2e5a426abc6c",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_94bcb0592b8ff001",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_eb63cf8644caed41",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_27d207a1064a8d8a",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_e22e08d563482359",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_21e23c84e197454a",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_dd3fa2ed4170a810",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_ab09fb7ca6f1c705",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_a3432e4d5c68aace",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_31f3ecf6cb42b6eb",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_678195598e1a83b9",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_f01f4ccd34caddb0",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_7a620737d3f6a45c",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_9dc3f15e9194573e",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_deb291f0154a67fd",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_f4ea6824120284a6",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_4e353683862416f8",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_ef0fc3d872dbf85a",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_60453a2047ffbb02",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_6169243ef6e6b86d",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_ceffb7146bcf56b6",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_ffed7bf342e9df6e",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_455e31f49c700cf6",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_5898d4b8c0ef923c",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_fa0e656946a0e79a",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_41e410dc1a458c85",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_93d64ce3c3aa10a9",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_d6bc865001f7b88f",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_b94e2d9cf3f8324c",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_91b59b7f3a3133c9",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_f39df9bf6d8fdcaa",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_7d15be7d118c29e2",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_6482d681400a791a",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_075a7043f8249842",
+      "reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ]
+    },
+    {
+      "event_id": "VE_d99d139ddb21ddab",
+      "reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ]
+    },
+    {
+      "event_id": "VE_da473c6b23075d13",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_ee0f90fc160a001b",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_cff13ff54c751698",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_e4edb804f48c722a",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_bf0ae67a1854fe6c",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_502d90b3c61cb1d1",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_28a11c26ca627b00",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_72cdb851543b63b4",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_7e6dd4e1eb7fc13e",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_3fdc4eeffe0f282b",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_2e2ba51dd918c5f3",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_f47af4c565d599a1",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_daf9d9c3acf2a7a5",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_db8c9d6170136a5f",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_38b5b149c0ed7c3a",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_d4bae15d70154654",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_ff05e614de0fdb57",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_45f9c1961fa1f87f",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_b0c8e931be7fde98",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_6d2731f2deed61e0",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_367c4e40f21302c3",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_c8f0c6bfe7d22b3d",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_d079ec23c68803f6",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_0c9664d210ff00f4",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_6f8804e5476409a9",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_eb9811cda0f7ddd7",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_9c70480a88be1a96",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_cca53571fb50b6c3",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_4933b2d037feb15d",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_b23c4d150806546f",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_351515781f92a0af",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_862733144cde8e89",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_80cb3b9aeb6c8771",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_9e3335bddf8750ae",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_02b18ec5998a7948",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_2707b99a490a0f5d",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_41f4c16fe807add4",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_c2eb1d8445665ac4",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_0e206da13b88a6e9",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_f8a4c9c267957bf4",
+      "reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ]
+    },
+    {
+      "event_id": "VE_76f5fc94e77ac29a",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_d90c79d14956e529",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_836aecea13b6a865",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_addc7b4dbeeff363",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_05b34d32b0473fab",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_965ad3ed6a1454d5",
+      "reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ]
+    },
+    {
+      "event_id": "VE_55bfc7a8eea292a7",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_6ea9fc23143bbccc",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_da1576edd9ef3f4a",
+      "reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ]
+    },
+    {
+      "event_id": "VE_9602f78a443a72d8",
+      "reasons": [
+        "visual_vs_narrative_context_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_4048a71889566844",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_c577ed61805e01eb",
+      "reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ]
+    },
+    {
+      "event_id": "VE_70fd22342a4e8c76",
+      "reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ]
+    },
+    {
+      "event_id": "VE_c449ff8abae0d894",
+      "reasons": [
+        "visual_vs_narrative_context_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_3a272e707a780d51",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_77dfa2ccb5425dee",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_67e8a4deef085f17",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_af2c07e8386ef049",
+      "reasons": [
+        "visual_vs_narrative_context_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_d2303630d50bc5c7",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_a7eb500b99e0cce3",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_aa927e53fdc4b6e5",
+      "reasons": [
+        "legacy_generic_class_did_not_assess_visual_reuse"
+      ]
+    },
+    {
+      "event_id": "VE_e213cc4df9ccd858",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_369e6a3fb044d48c",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_be5e09733956dc85",
+      "reasons": [
+        "asset_cut_continuity_requires_visual_assessment"
+      ]
+    },
+    {
+      "event_id": "VE_aac97b1bc68285aa",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_bdb0c1fe28b34fbb",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_4dddd75813ede461",
+      "reasons": [
+        "missing_temporal_visual_moments"
+      ]
+    },
+    {
+      "event_id": "VE_73749fa7963f1b87",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_ff4c678c022845c1",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    },
+    {
+      "event_id": "VE_1b188c4d4fae4312",
+      "reasons": [
+        "local_moment_or_state_usability_unresolved"
+      ]
+    }
+  ],
+  "additional_provider_calls_expected": 147,
+  "additional_provider_calls_validation_budget": 294,
+  "projection_is_provisional": true,
+  "provider_requests": 0,
+  "api_cost_usd": 0.0,
+  "artifacts_modified": false,
+  "movie_id": "mi-otra-yo-s03e03",
+  "safety": {
+    "real_provider_calls": 0,
+    "e03_artifacts_modified": false,
+    "migration_executed": false,
+    "production_executed": false,
+    "rendering_executed": false,
+    "safe_to_migrate_full_episode": false
+  },
+  "targeted_reobservation_reason_counts": {
+    "asset_cut_continuity_requires_visual_assessment": 11,
+    "missing_temporal_visual_moments": 83,
+    "legacy_generic_class_did_not_assess_visual_reuse": 19,
+    "local_moment_or_state_usability_unresolved": 31,
+    "visual_vs_narrative_context_unresolved": 3
+  },
+  "cache_inventory": {
+    "validated_temporal_v2_events": 71,
+    "older_observation_events": 104,
+    "invalidate_existing_observations": false,
+    "regenerated_observations": 0
+  },
+  "verification": {
+    "focused_tests_passed": 112,
+    "full_tests_passed": 603,
+    "full_tests_skipped": 1,
+    "git_diff_check": "passed",
+    "e03_unchanged_files_verified": 554,
+    "read_only_cli_counts_match": true
+  }
+}

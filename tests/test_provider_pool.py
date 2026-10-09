@@ -1,3 +1,5 @@
+import pytest
+
 from movie_broll.broll_semantics import (
     GeminiProviderPool,
     GeminiProviderPoolError,
@@ -435,3 +437,63 @@ def test_env_builder_uses_six_primaries_before_backup(monkeypatch):
         "gemini-primary-6",
         "gemini-backup",
     ]
+
+
+def test_env_builder_refreshes_new_env_file_key(monkeypatch, tmp_path):
+    import movie_broll.broll_semantics as semantics
+
+    calls = []
+
+    class EnvProvider:
+        def __init__(self, api_key, model="gemini-3.6-flash", identifier="gemini"):
+            self.identifier = identifier
+            self.model = model
+            calls.append((identifier, api_key))
+
+        def generate(self, *_args):
+            return SemanticResponse({}, {}, provider=self.identifier, model=self.model)
+
+    monkeypatch.setattr(semantics, "GeminiBrollSemanticProvider", EnvProvider)
+    env_file = tmp_path / ".env"
+    env_file.write_text("GEMINI_API_KEY_1=one\n", encoding="utf-8")
+    pool = semantics.build_gemini_provider_from_env(environ={}, env_file=env_file)
+    assert [member["provider"].identifier for member in pool.primaries] == ["gemini-primary-1"]
+
+    env_file.write_text("GEMINI_API_KEY_1=one\nGEMINI_API_KEY_7=seven\n", encoding="utf-8")
+    original = pool.primaries[0]
+    original["cooldown_until"] = 123.0
+    pool._refresh_credentials()
+    assert [member["provider"].identifier for member in pool.primaries] == [
+        "gemini-primary-1", "gemini-primary-7"
+    ]
+    assert pool.primaries[0] is original
+    assert pool.primaries[0]["cooldown_until"] == 123.0
+
+    env_file.write_text("GEMINI_API_KEY_7=seven\n", encoding="utf-8")
+    pool._refresh_credentials()
+    assert [member["provider"].identifier for member in pool.primaries] == ["gemini-primary-7"]
+    assert calls == [("gemini-primary-1", "one"), ("gemini-primary-7", "seven")]
+
+
+def test_pool_logs_only_safe_provider_identifiers(monkeypatch):
+    import movie_broll.broll_semantics as semantics
+
+    secret = "do-not-log-this-secret"
+    lines = []
+
+    class EnvProvider:
+        def __init__(self, _api_key, model="gemini-3.6-flash", identifier="gemini"):
+            self.identifier = identifier
+            self.model = model
+
+        def generate(self, *_args):
+            raise RuntimeError("Error code: 503 unavailable")
+
+    monkeypatch.setattr(semantics, "GeminiBrollSemanticProvider", EnvProvider)
+    pool = semantics.build_gemini_provider_from_env(
+        environ={"GEMINI_API_KEY_1": secret}, reporter=lines.append
+    )
+    with pytest.raises(GeminiProviderPoolError):
+        pool.generate("prompt", {"candidate_id": "BRC_TEST"}, b"image")
+    assert "gemini-primary-1" in "\n".join(lines)
+    assert secret not in "\n".join(lines)

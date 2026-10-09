@@ -4,11 +4,11 @@ import tomllib
 import cv2
 import numpy as np
 import pytest
-from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, POST_RENDER_AUDIT_VERSION, _asset_metadata, _choose_target, _directive, _existing_registered_package, _horizontal_reuse_provenance, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, crop_x, export_horizontal_from_source, finalize_pilot, letterbox, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, stream_copy_export_command, thumbnail, unletterbox_bbox, validate_vertical
+from movie_broll.finalization import REFRAME_ALGORITHM_VERSION, VERTICAL_VALIDATION_VERSION, POST_RENDER_AUDIT_VERSION, _asset_metadata, _choose_target, _directive, _existing_registered_package, _horizontal_reuse_provenance, _remove_incomplete_assets, _shot_validation, _vertical_reuse_valid, asset_identity, build_shot_crop_plan, classify_vertical_qa, crop_x, export_horizontal_from_source, finalize_pilot, letterbox, person_detector_preflight, reframe_fingerprint, render_vertical, safe_cleanup, shot_crop_plan, slugify, stream_copy_export_command, thumbnail, unletterbox_bbox, validate_vertical
 from movie_broll.utils import sha256_file
 
 def event(position='left', people=None, interaction=None):
-    return {'visual_event_id':'VE_000123','start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.,'source_shot_ids':['S1','S2'],
+    return {'visual_event_id':'VE_000123','timeline_ordinal':1,'start_frame':0,'end_frame_exclusive':24,'start_seconds':0.,'end_seconds':1.,'source_shot_ids':['S1','S2'],
       'visual':{'summary_es':'Conversación en terraza','primary_subject_position':position,'actions':['gesticular'],'visible_interactions':interaction or []},
       'people':people or [{'position':position}], 'editorial':{'decision':'KEEP','status':'VALIDATED','standalone_meaning_es':'Conversación en terraza'}}
 
@@ -27,10 +27,40 @@ def test_stable_registry_slug_and_flat_filenames(tmp_path):
 
 def test_asset_registry_distinguishes_window_scoped_events_without_changing_stability(tmp_path):
     first=event(); first['visual_event_id']='SW_05_VE_000001'
-    second=event(); second['visual_event_id']='SW_06_VE_000001'
+    second=event(); second['visual_event_id']='SW_06_VE_000001'; second['timeline_ordinal']=2
     assert asset_identity(tmp_path,'romper-el-circulo',first)[0] == 'rc001'
     assert asset_identity(tmp_path,'romper-el-circulo',first)[0] == 'rc001'
     assert asset_identity(tmp_path,'romper-el-circulo',second)[0] == 'rc002'
+
+def test_asset_identity_uses_timeline_ordinal_with_gaps_and_restart(tmp_path):
+    events=[]
+    for ordinal in range(1,6):
+        candidate=event(); candidate.update(visual_event_id=f'VE_{ordinal:04d}',timeline_ordinal=ordinal)
+        events.append(candidate)
+
+    # Production can finalize #5, then #3, then #1.  Rejected #2/#4 leave
+    # intentional gaps because identities come from the global manifest.
+    assert [asset_identity(tmp_path,'film',events[index])[0] for index in (4,2,0)] == ['f005','f003','f001']
+    before=json.loads((tmp_path/'asset_registry.json').read_text())
+    assert asset_identity(tmp_path,'film',events[4])[0] == 'f005'
+    after=json.loads((tmp_path/'asset_registry.json').read_text())
+    assert after == before and set(after['events']) == {'VE_0001','VE_0003','VE_0005'}
+    base='f005-conversacion-en-terraza'
+    assert {f'{base}.mp4',f'v{base}.mp4',f'{base}.jpg',f'v{base}.jpg',f'{base}.json'} == {
+        f'{prefix}{base}{suffix}' for prefix,suffix in (('', '.mp4'),('v','.mp4'),('', '.jpg'),('v','.jpg'),('', '.json'))
+    }
+
+def test_asset_identity_replaces_stale_completion_order_registry_mapping(tmp_path):
+    candidate=event(); candidate.update(visual_event_id='VE_0005',timeline_ordinal=5)
+    (tmp_path/'asset_registry.json').write_text(json.dumps({
+        'schema_version':'asset_registry_v1','movie_id':'film',
+        'events':{'VE_0005':{'asset_id':'f001','slug':'stale-completion-order'}},
+    }))
+    assert asset_identity(tmp_path,'film',candidate) == ('f005','conversacion-en-terraza')
+    registry=json.loads((tmp_path/'asset_registry.json').read_text())
+    assert registry['events']['VE_0005'] == {
+        'asset_id':'f005','slug':'conversacion-en-terraza','timeline_ordinal':5,
+    }
 
 def test_crop_is_subject_and_shot_aware_not_fixed_center():
     e=event('left'); shots={'S1':{'start_seconds':0,'end_seconds':.5,'primary_subject_position':'left'},'S2':{'start_seconds':.5,'end_seconds':1,'primary_subject_position':'right'}}
@@ -632,6 +662,106 @@ def test_complete_package_promotion_publishes_exactly_five(tmp_path):
     assert all(x.is_file() for x in final)
 
 
+def _review_finalization_setup(monkeypatch,tmp_path,vertical_status='REVIEW'):
+    """Run the finalizer with real small media and deterministic review validation."""
+    import movie_broll.finalization as f
+    source=tmp_path/'input'/'film'
+    source.mkdir(parents=True)
+    synthetic(source/'movie.mp4')
+    candidate=event()
+    candidate['candidate_id']='C1'
+    monkeypatch.setattr('movie_broll.broll_pilot.shot_focus_compatible',lambda *_:True)
+    monkeypatch.setattr(f,'_source_movie_sha256',lambda *_:'a'*64)
+    monkeypatch.setattr(f,'export_horizontal_from_source',lambda _movie,_event,out,*_: synthetic(out) or 'source_encode')
+    monkeypatch.setattr(f,'probe',lambda *_:{'status':'PASS','duration_seconds':1.0})
+    monkeypatch.setattr(f,'build_shot_crop_plan',lambda *_args,**_kwargs:[{'shot_id':'S1','start_seconds':0.0,'end_seconds':1.0,'strategy':'subject_focus'}])
+    def render(_movie,out,*_args):
+        writer=cv2.VideoWriter(str(out),cv2.VideoWriter_fourcc(*'mp4v'),24,(90,120))
+        for _ in range(24): writer.write(np.full((120,90,3),127,dtype='uint8'))
+        writer.release()
+    monkeypatch.setattr(f,'render_vertical',render)
+    monkeypatch.setattr(f,'validate_vertical',lambda *_:{'status':vertical_status,'duration_seconds':1.0})
+    return f,source,candidate
+
+
+def _review_names(base):
+    return [f'{base}.mp4',f'v{base}.mp4',f'{base}.jpg',f'v{base}.jpg',f'{base}.json']
+
+
+def test_review_vertical_publishes_canonical_five_file_package(monkeypatch,tmp_path):
+    f,source,candidate=_review_finalization_setup(monkeypatch,tmp_path)
+
+    result=f.finalize_pilot(source,'N1',candidates=[candidate],shots={},detector_preflight={})
+    review=tmp_path/'runs'/'film'/'review'
+    aid,slug=asset_identity(tmp_path/'runs'/'film','film',candidate)
+    base=f'{aid}-{slug}'
+
+    assert result['review']==1
+    assert sorted(path.name for path in review.iterdir()) == sorted(_review_names(base))
+    data=json.loads((review/f'{base}.json').read_text())
+    assert data['schema_version']=='asset_metadata_v1' and data['asset_hub_ready'] is False
+    assert data['media']['horizontal']['file']==f'{base}.mp4'
+    assert data['media']['horizontal']['thumbnail']['file']==f'{base}.jpg'
+    assert data['media']['vertical']['file']==f'v{base}.mp4'
+    assert data['media']['vertical']['thumbnail']['file']==f'v{base}.jpg'
+    assert data['visual']['final_vertical']['validation_status']=='REVIEW'
+    ledger=json.loads((tmp_path/'runs'/'film'/'processing_ledger.json').read_text())
+    finalization=ledger['events'][candidate['visual_event_id']]['stages']['finalization']
+    assert finalization['decision']=='REVIEW_VERTICAL' and finalization['asset_hub_ready'] is False
+
+
+def test_review_promotion_failure_leaves_no_partial_package(monkeypatch,tmp_path):
+    f,source,candidate=_review_finalization_setup(monkeypatch,tmp_path)
+    real_move=f.shutil.move
+    calls={'count':0}
+    def fail_on_third_move(source_path,destination):
+        calls['count']+=1
+        if calls['count']==3: raise OSError('simulated review promotion failure')
+        return real_move(source_path,destination)
+    monkeypatch.setattr(f.shutil,'move',fail_on_third_move)
+
+    result=f.finalize_pilot(source,'N1',candidates=[candidate],shots={},detector_preflight={})
+    review=tmp_path/'runs'/'film'/'review'
+    assert result['failed_retryable']==1 and not list(review.glob('*'))
+
+
+def test_legacy_review_package_is_reused_and_upgraded(monkeypatch,tmp_path):
+    f,source,candidate=_review_finalization_setup(monkeypatch,tmp_path)
+    f.finalize_pilot(source,'N1',candidates=[candidate],shots={},detector_preflight={})
+    review=tmp_path/'runs'/'film'/'review'
+    aid,slug=asset_identity(tmp_path/'runs'/'film','film',candidate)
+    base=f'{aid}-{slug}'
+    for name in (f'{base}.mp4',f'{base}.jpg',f'v{base}.jpg'):
+        (review/name).unlink()
+    (review/f'{base}.json').write_text(json.dumps({'schema_version':'vertical_review_v1'}))
+    monkeypatch.setattr(f,'render_vertical',lambda *_:pytest.fail('legacy review video should be reused'))
+
+    result=f.finalize_pilot(source,'N1',candidates=[candidate],shots={},detector_preflight={})
+
+    assert result['review_reused']==1
+    assert sorted(path.name for path in review.iterdir()) == sorted(_review_names(base))
+    assert json.loads((review/f'{base}.json').read_text())['schema_version']=='asset_metadata_v1'
+
+
+def test_pass_retires_only_its_complete_review_package(monkeypatch,tmp_path):
+    f,source,candidate=_review_finalization_setup(monkeypatch,tmp_path)
+    f.finalize_pilot(source,'N1',candidates=[candidate],shots={},detector_preflight={})
+    review=tmp_path/'runs'/'film'/'review'
+    aid,slug=asset_identity(tmp_path/'runs'/'film','film',candidate)
+    base=f'{aid}-{slug}'
+    unrelated='rc999-unrelated'
+    for name in _review_names(unrelated): (review/name).write_bytes(b'unrelated')
+    monkeypatch.setattr(f,'validate_vertical',lambda *_:{'status':'PASS','duration_seconds':1.0})
+
+    result=f.finalize_pilot(source,'N1',candidates=[candidate],shots={},detector_preflight={})
+
+    assert result['completed']==0
+    assert result['reconciled_promotions']==1
+    assert (tmp_path/'runs'/'film'/'assets'/f'{base}.json').is_file()
+    assert not any((review/name).exists() for name in _review_names(base))
+    assert all((review/name).exists() for name in _review_names(unrelated))
+
+
 
 def test_semantic_bound_subject_starts_from_requested_person_id(monkeypatch,tmp_path):
     import numpy as np
@@ -711,6 +841,49 @@ def test_semantic_bound_subject_starts_from_requested_person_id(monkeypatch,tmp_
 
     # P2 is the right-hand person even though focus_position intentionally says left.
     assert rule['focus_bbox']['x'] >= 85
+    assert not rule['review_required']
+
+
+def test_multi_person_directive_uses_the_bound_people_as_one_preserved_target(monkeypatch,tmp_path):
+    import numpy as np
+    import movie_broll.finalization as f
+
+    samples=[
+        (1.12,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.31,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.50,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.69,np.zeros((120,160,3),dtype=np.uint8)),
+        (1.88,np.zeros((120,160,3),dtype=np.uint8)),
+    ]
+    monkeypatch.setattr(f,'_sample_frames',lambda *args,**kwargs:samples)
+    detections=[[
+        {'detector':'yolo_person','confidence':.9,'bbox':{'x':35,'y':10,'width':20,'height':90}},
+        {'detector':'yolo_person','confidence':.9,'bbox':{'x':75,'y':10,'width':20,'height':90}},
+    ] for _ in samples]
+    calls=iter(detections)
+    event={
+        'visual_event_id':'VE_MULTI_BIND',
+        'start_seconds':1.0,'end_seconds':2.0,
+        'start_frame':24,'end_frame_exclusive':48,
+        'source_shot_ids':['S1'],
+        'visual':{'shot_focus_plan':[{
+            'shot_id':'S1','focus_subject':'multiple_people',
+            'focus_position':'multiple','focus_reason':'two seated men',
+            'preserve_secondary_subject':True,'interaction_requirement':'none',
+            'target_person_ids':['P1','P2'],'target_binding_confidence':'high',
+        }]},
+    }
+
+    rule=f.build_shot_crop_plan(
+        tmp_path/'movie.mp4',event,
+        {'S1':{'start_seconds':1.0,'end_seconds':2.0}},160,120,
+        detector=lambda _:next(calls),sample_count=5,
+    )[0]
+
+    assert rule['tracking']['mode']=='semantic_bound_multi_geometry'
+    assert rule['target_binding_resolved'] is True
+    assert rule['preserve_interaction'] is True
+    assert rule['focus_bbox'] == {'x':35.0,'y':10.0,'width':60.0,'height':90.0}
     assert not rule['review_required']
 
 
@@ -914,7 +1087,8 @@ def test_post_render_audit_observes_actual_vertical_subject(tmp_path):
     )
 
     assert audit['version']==POST_RENDER_AUDIT_VERSION
-    assert audit['decision']=='PASS'
+    assert audit['decision']=='AMBIGUOUS'
+    assert audit['face_safe_audit']['reason_codes']==['face_detection_inconclusive']
     assert audit['shots'][0]['person_presence_ratio']==1.0
     assert audit['shots'][0]['centered_ratio']==1.0
 
@@ -945,7 +1119,49 @@ def test_post_render_audit_retries_persistently_off_crop_subject(tmp_path):
     )
 
     assert audit['decision']=='RETRY'
-    assert audit['shots'][0]['reason']=='focused_person_persistently_off_crop'
+    assert audit['shots'][0]['reason']=='focused_person_persistently_at_crop_edge'
+
+
+def test_editorial_gate_rejects_crop_between_two_competing_subjects(tmp_path):
+    import movie_broll.finalization as f
+    video=tmp_path/'vertical.mp4'; _vertical_audit_video(video)
+    audit=f._post_render_person_audit(video,[_vertical_audit_rule()],detector=lambda _:[
+        {'detector':'yolo_person','bbox':{'x':10,'y':10,'width':20,'height':95}},
+        {'detector':'yolo_person','bbox':{'x':60,'y':10,'width':20,'height':95}},
+    ])
+    assert audit['decision']=='AMBIGUOUS'
+    shot=audit['shots'][0]
+    assert shot['reason']=='crop_centered_between_competing_subjects'
+    assert shot['editorial_geometry']['empty_center_ratio'] == 1.0
+
+
+def test_editorial_gate_allows_stable_intended_off_center_subject(tmp_path):
+    import movie_broll.finalization as f
+    video=tmp_path/'vertical.mp4'; _vertical_audit_video(video)
+    audit=f._post_render_person_audit(video,[_vertical_audit_rule()],detector=lambda _:[
+        {'detector':'yolo_person','bbox':{'x':8,'y':10,'width':30,'height':95}},
+    ])
+    assert audit['decision']=='PASS'
+    geometry=audit['shots'][0]['editorial_geometry']
+    assert geometry['target_center_distance'] > .10
+    assert geometry['target_edge_violation_ratio'] == 0
+
+
+def test_editorial_gate_routes_unstable_target_binding_to_review(tmp_path):
+    import movie_broll.finalization as f
+    video=tmp_path/'vertical.mp4'; _vertical_audit_video(video)
+    rule=_vertical_audit_rule()
+    rule['target_samples']=[{'time':0.,'bbox':{'x':55,'y':10,'width':25,'height':90}}]
+    calls=iter([
+        [{'detector':'yolo_person','bbox':{'x':20,'y':10,'width':25,'height':90}}],
+        [{'detector':'yolo_person','bbox':{'x':65,'y':10,'width':20,'height':90}}],
+        [{'detector':'yolo_person','bbox':{'x':20,'y':10,'width':25,'height':90}}],
+        [{'detector':'yolo_person','bbox':{'x':65,'y':10,'width':20,'height':90}}],
+        [{'detector':'yolo_person','bbox':{'x':65,'y':10,'width':20,'height':90}}],
+    ])
+    audit=f._post_render_person_audit(video,[rule],detector=lambda _:next(calls))
+    assert audit['decision']=='AMBIGUOUS'
+    assert audit['shots'][0]['editorial_geometry']['target_visibility_ratio'] < .60
 
 
 def test_post_render_audit_never_passes_unbound_legacy_multi_person_identity(tmp_path):
@@ -990,13 +1206,14 @@ def test_post_render_audit_never_passes_unbound_legacy_multi_person_identity(tmp
     )
 
 
-def test_validate_vertical_requires_post_render_audit_pass(tmp_path):
+def test_validate_vertical_requires_post_render_audit_pass(tmp_path, monkeypatch):
     import movie_broll.finalization as f
 
     video=tmp_path/'vertical.mp4'
     _vertical_audit_video(video)
 
-    plan=[_vertical_audit_rule()]
+    plan=[{**_vertical_audit_rule(), 'face_safe_source':str(video), 'face_safe_event':{'start_frame':0}}]
+    monkeypatch.setattr('movie_broll.face_safe.audit_video',lambda *args,**kwargs:{'decision':'PASS'})
 
     centered=lambda frame:[
         {
@@ -1033,5 +1250,83 @@ def test_validate_vertical_requires_post_render_audit_pass(tmp_path):
     )
 
     assert failed['status']=='REVIEW'
-    assert failed['review_reason']=='POST_RENDER_RETRY'
+    assert failed['review_reason']=='primary_subject_lost_in_render'
     assert failed['post_render_audit']['decision']=='RETRY'
+
+
+def _qa_validation(*, shot=None, audit_shot=None, **overrides):
+    value={
+        'file_exists':True, 'frame_count':24, 'duration_valid':True,
+        'width':90, 'height':120, 'aspect_ratio':'3:4', 'black_bars':False,
+        'shots':[shot or {'focus_requirement':'person','focus_subject_present':True,
+            'critical_focus_clipping':False,'introduced_subject_clipping':False,
+            'crop_stable':True,'action_preserved':True,'interaction_preserved':True}],
+        'post_render_audit':{'shots':[audit_shot] if audit_shot else []},
+    }
+    return value | overrides
+
+
+def test_final_qa_defaults_valid_keep_to_publish_and_keeps_soft_warnings():
+    assert classify_vertical_qa(_qa_validation()) == {'hard_failures':[], 'soft_warnings':[]}
+    soft=classify_vertical_qa(_qa_validation(audit_shot={'reason':'crop_centered_between_competing_subjects'}))
+    assert soft == {'hard_failures':[], 'soft_warnings':['crop_centered_between_competing_subjects']}
+
+
+def test_final_qa_distinguishes_hard_subject_and_interaction_loss_from_minor_secondary_loss():
+    primary=classify_vertical_qa(_qa_validation(shot={'focus_requirement':'person','focus_subject_present':True,
+        'critical_focus_clipping':True,'introduced_subject_clipping':True,'crop_stable':True,
+        'action_preserved':True,'interaction_preserved':True}))
+    assert 'primary_subject_materially_clipped' in primary['hard_failures']
+    interaction=classify_vertical_qa(_qa_validation(shot={'focus_requirement':'person','focus_subject_present':True,
+        'critical_focus_clipping':False,'introduced_subject_clipping':False,'crop_stable':True,
+        'action_preserved':True,'interaction_preserved':False}))
+    assert interaction['hard_failures'] == ['required_multi_person_interaction_lost']
+    secondary=classify_vertical_qa(_qa_validation(shot={'focus_requirement':'person','focus_subject_present':True,
+        'full_bbox_clipping':True,'critical_focus_clipping':False,'introduced_subject_clipping':False,
+        'crop_stable':True,'action_preserved':True,'interaction_preserved':True}))
+    assert secondary == {'hard_failures':[], 'soft_warnings':['noncritical_subject_edge_proximity']}
+
+
+def test_final_qa_hard_fails_invalid_vertical_and_preserves_reframe_preferences_as_soft():
+    invalid=classify_vertical_qa(_qa_validation(width=0,height=0,aspect_ratio='other'))
+    assert 'vertical_dimensions_invalid' in invalid['hard_failures']
+    edge=classify_vertical_qa(_qa_validation(audit_shot={'reason':'focused_person_persistently_at_crop_edge'}))
+    assert edge == {'hard_failures':[], 'soft_warnings':['focused_person_persistently_at_crop_edge']}
+
+
+def test_legacy_local_revalidation_uses_existing_vertical_without_rendering(tmp_path, monkeypatch):
+    import movie_broll.finalization as f
+    video=tmp_path/'v.mp4'
+    writer=cv2.VideoWriter(str(video),cv2.VideoWriter_fourcc(*'mp4v'),24,(90,120))
+    for _ in range(24): writer.write(np.full((120,90,3),200,dtype=np.uint8))
+    writer.release()
+    run=tmp_path/'runs'/'film'; run.mkdir(parents=True)
+    data={'source_timeline':{'visual_event_id':'VE_1','start_seconds':0.,'end_seconds':1.}}
+    monkeypatch.setattr(f,'render_vertical',lambda *_:pytest.fail('legacy validation must not render'))
+    qa=f._local_legacy_vertical_qa(run,video,data)
+    assert not qa['hard_failures'] and not qa.get('insufficient_reason')
+
+
+def test_legacy_local_revalidation_marks_missing_timeline_evidence_explicitly(tmp_path):
+    import movie_broll.finalization as f
+    video=tmp_path/'v.mp4'
+    writer=cv2.VideoWriter(str(video),cv2.VideoWriter_fourcc(*'mp4v'),24,(90,120))
+    for _ in range(24): writer.write(np.full((120,90,3),200,dtype=np.uint8))
+    writer.release()
+    qa=f._local_legacy_vertical_qa(tmp_path/'runs'/'film',video,{'source_timeline':{}})
+    assert qa['insufficient_reason']=='legacy_evidence_insufficient'
+
+
+def test_legacy_reason_normalization_keeps_edge_and_face_ambiguity_soft():
+    import movie_broll.finalization as f
+    findings=f._legacy_reason_findings({'review_reason':'POST_RENDER_RETRY','post_render_audit':{
+        'reason':'one_or_more_shots_need_reframe',
+        'shots':[{'reason':'focused_person_persistently_at_crop_edge'}],
+        'face_safe_audit':{'decision':'AMBIGUOUS'},
+    }})
+    assert findings['hard_failures'] == []
+    assert set(findings['soft_warnings']) == {
+        'one_or_more_shots_need_reframe',
+        'focused_person_persistently_at_crop_edge',
+        'face_safe_ambiguous',
+    }

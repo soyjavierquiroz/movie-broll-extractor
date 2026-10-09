@@ -1,0 +1,2247 @@
+{
+  "blocked_members": [
+    {
+      "batch_request_id": "77c6c0141916ecd8a2b4eb82f0450ccd44c2a3f8547a6b97072c5a78076fe648-2",
+      "event_fingerprint": "757b831a3a075dcc29255ee8180ac19654bcb58fb9c67ced7cdce31f0173ada5",
+      "event_id": "VE_ce865311d8a14107",
+      "offline_recovered": false,
+      "parsed_response": {
+        "action_evidence_ids": [],
+        "action_or_moment_complete": "unclear",
+        "confidence": 0.85,
+        "context_dependency": "low",
+        "conversation_present": "unclear",
+        "conversation_visual_signal": "useful_environment_or_composition",
+        "event_id": "VE_ce865311d8a14107",
+        "evidence_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06",
+          "SAMPLE_07",
+          "SAMPLE_08",
+          "SAMPLE_09"
+        ],
+        "moment_status": "reusable_state",
+        "movement": "unclear",
+        "narrative_context_dependency": "high",
+        "object_evidence_ids": [],
+        "observed_actions": [],
+        "people_count": "2_plus",
+        "physical_interactions": [],
+        "represented_shot_ids": [
+          "FULL_SHOT_0013",
+          "FULL_SHOT_0014",
+          "FULL_SHOT_0015"
+        ],
+        "shot_focus_plan": [],
+        "sustained_state": "true",
+        "technical_observations": {
+          "black_or_empty": false,
+          "corrupt_or_unusable": false,
+          "credits": false,
+          "dominant_text": false,
+          "logo": false,
+          "title_card": false
+        },
+        "temporal_support_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06",
+          "SAMPLE_07",
+          "SAMPLE_08",
+          "SAMPLE_09"
+        ],
+        "utility_assessments": [
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09"
+            ],
+            "utility_class": "conversation_scene"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "therapy_or_session"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "discussion_or_argument"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "meditation_or_stillness"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "reaction"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "sustained_emotional_state"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "physical_interaction"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03"
+            ],
+            "utility_class": "nonverbal_interaction"
+          },
+          {
+            "assessment": "unclear",
+            "sample_ids": [
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09"
+            ],
+            "utility_class": "walking_or_movement"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "concrete_action"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "object_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09"
+            ],
+            "utility_class": "useful_state"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09"
+            ],
+            "utility_class": "environment_or_composition"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_06"
+            ],
+            "utility_class": "establishing_visual"
+          }
+        ],
+        "visible_person_ids": [
+          "FULL_SHOT_0013:P2",
+          "FULL_SHOT_0013:P3",
+          "FULL_SHOT_0014:P6",
+          "FULL_SHOT_0015:P9",
+          "FULL_SHOT_0015:P16",
+          "FULL_SHOT_0015:P17"
+        ],
+        "visible_reactions": [],
+        "visible_states": [
+          "People sit together on a sandy beach; a woman in a patterned wrap leans forward beside a woman in white.",
+          "A wide view shows beach, sea, sailboats, umbrellas, and distant beachgoers.",
+          "The two seated women appear together in a wider beach-and-buildings composition."
+        ],
+        "visual_actions": [],
+        "visual_assessment_complete": true,
+        "visual_moment_type": "composition",
+        "visual_moments": [
+          {
+            "action_completeness": "false",
+            "asset_window_complete": "true",
+            "beginning_sample_id": "SAMPLE_07",
+            "completion_sample_id": null,
+            "continuity": "supported",
+            "development_sample_ids": [
+              "SAMPLE_08"
+            ],
+            "end_frame_exclusive": 1496,
+            "moment_id": "M1",
+            "moment_kind": "composition",
+            "moment_usability": "usable",
+            "reuse_key": "wide beach group with seated women, shoreline and beachfront buildings",
+            "sample_ids": [
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09"
+            ],
+            "start_frame": 1204,
+            "utility_class": "environment_or_composition",
+            "visual_context_dependency": "low",
+            "visual_strength": "useful"
+          }
+        ],
+        "visual_utility_kind": "environment",
+        "visually_reusable": "true"
+      },
+      "present": true,
+      "semantic_attempts": 1,
+      "transport_dispatches": 1,
+      "validation_errors": [
+        "reusable_state_requires_useful_state_utility",
+        "one_focus_directive_per_technical_shot"
+      ]
+    },
+    {
+      "batch_request_id": "77c6c0141916ecd8a2b4eb82f0450ccd44c2a3f8547a6b97072c5a78076fe648-2",
+      "event_fingerprint": "e246eea7beacaa2c5ee75009cdc147b4577bb45d0ffe7facfb93c07bae6deae1",
+      "event_id": "VE_5323966610e1583a",
+      "offline_recovered": false,
+      "parsed_response": {
+        "action_evidence_ids": [],
+        "action_or_moment_complete": "unclear",
+        "confidence": 0.91,
+        "context_dependency": "low",
+        "conversation_present": "true",
+        "conversation_visual_signal": "strong_body_language",
+        "event_id": "VE_5323966610e1583a",
+        "evidence_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06",
+          "SAMPLE_07",
+          "SAMPLE_08",
+          "SAMPLE_09"
+        ],
+        "moment_status": "reusable_state",
+        "movement": "present",
+        "narrative_context_dependency": "high",
+        "object_evidence_ids": [],
+        "observed_actions": [],
+        "people_count": "2_plus",
+        "physical_interactions": [],
+        "represented_shot_ids": [
+          "FULL_SHOT_0016",
+          "FULL_SHOT_0017",
+          "FULL_SHOT_0018"
+        ],
+        "shot_focus_plan": [],
+        "sustained_state": "true",
+        "technical_observations": {
+          "black_or_empty": false,
+          "corrupt_or_unusable": false,
+          "credits": false,
+          "dominant_text": false,
+          "logo": false,
+          "title_card": false
+        },
+        "temporal_support_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06",
+          "SAMPLE_07",
+          "SAMPLE_08",
+          "SAMPLE_09"
+        ],
+        "utility_assessments": [
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09"
+            ],
+            "utility_class": "conversation_scene"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "therapy_or_session"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "discussion_or_argument"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "meditation_or_stillness"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_05",
+              "SAMPLE_08",
+              "SAMPLE_09"
+            ],
+            "utility_class": "reaction"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "sustained_emotional_state"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "physical_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_05",
+              "SAMPLE_08",
+              "SAMPLE_09"
+            ],
+            "utility_class": "nonverbal_interaction"
+          },
+          {
+            "assessment": "unclear",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09"
+            ],
+            "utility_class": "walking_or_movement"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "concrete_action"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "object_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_05",
+              "SAMPLE_08",
+              "SAMPLE_09"
+            ],
+            "utility_class": "useful_state"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_04",
+              "SAMPLE_07",
+              "SAMPLE_08"
+            ],
+            "utility_class": "environment_or_composition"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_04",
+              "SAMPLE_07"
+            ],
+            "utility_class": "establishing_visual"
+          }
+        ],
+        "visible_person_ids": [
+          "FULL_SHOT_0016:P2",
+          "FULL_SHOT_0016:P3",
+          "FULL_SHOT_0017:P4",
+          "FULL_SHOT_0017:P5",
+          "FULL_SHOT_0018:P1",
+          "FULL_SHOT_0018:P2"
+        ],
+        "visible_reactions": [],
+        "visible_states": [
+          "Two women sit close together on the beach, facing one another; the woman in white makes visible hand gestures while the other listens.",
+          "Beach umbrellas, sand and people are visible in the background."
+        ],
+        "visual_actions": [],
+        "visual_assessment_complete": true,
+        "visual_moment_type": "sustained_state",
+        "visual_moments": [
+          {
+            "action_completeness": "false",
+            "asset_window_complete": "true",
+            "beginning_sample_id": "SAMPLE_01",
+            "completion_sample_id": null,
+            "continuity": "supported",
+            "development_sample_ids": [
+              "SAMPLE_02"
+            ],
+            "end_frame_exclusive": 1672,
+            "moment_id": "M1",
+            "moment_kind": "sustained_state",
+            "moment_usability": "usable",
+            "reuse_key": "two seated women in beach conversation, close shared framing",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04"
+            ],
+            "start_frame": 1496,
+            "utility_class": "conversation_scene",
+            "visual_context_dependency": "low",
+            "visual_strength": "useful"
+          }
+        ],
+        "visual_utility_kind": "strong_nonverbal_interaction",
+        "visually_reusable": "true"
+      },
+      "present": true,
+      "semantic_attempts": 1,
+      "transport_dispatches": 1,
+      "validation_errors": [
+        "reusable_state_requires_useful_state_utility",
+        "one_focus_directive_per_technical_shot",
+        "insufficient_local_temporal_support"
+      ]
+    },
+    {
+      "batch_request_id": "77c6c0141916ecd8a2b4eb82f0450ccd44c2a3f8547a6b97072c5a78076fe648-2",
+      "event_fingerprint": "0d003ca5a6e19d65c7f73a553324231cfe0726d884d146fb0c06c661c7d3d57a",
+      "event_id": "VE_1fdc590d300b260f",
+      "offline_recovered": false,
+      "parsed_response": {
+        "action_evidence_ids": [],
+        "action_or_moment_complete": "true",
+        "confidence": 0.94,
+        "context_dependency": "low",
+        "conversation_present": "true",
+        "conversation_visual_signal": "physical_interaction",
+        "event_id": "VE_1fdc590d300b260f",
+        "evidence_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06",
+          "SAMPLE_07",
+          "SAMPLE_08",
+          "SAMPLE_09",
+          "SAMPLE_10",
+          "SAMPLE_11",
+          "SAMPLE_12",
+          "SAMPLE_13",
+          "SAMPLE_14",
+          "SAMPLE_15"
+        ],
+        "moment_status": "reusable_state",
+        "movement": "present",
+        "narrative_context_dependency": "high",
+        "object_evidence_ids": [],
+        "observed_actions": [
+          {
+            "canonical_label": "Two seated women lean together in an embrace, with one woman wrapping an arm around the other.",
+            "evidence_type": "distinct_visible_action_or_reaction",
+            "sample_ids": [
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10"
+            ]
+          }
+        ],
+        "people_count": "2_plus",
+        "physical_interactions": [
+          "One woman puts an arm around the other as they lean together."
+        ],
+        "represented_shot_ids": [
+          "FULL_SHOT_0019",
+          "FULL_SHOT_0020",
+          "FULL_SHOT_0021"
+        ],
+        "shot_focus_plan": [],
+        "sustained_state": "unclear",
+        "technical_observations": {
+          "black_or_empty": false,
+          "corrupt_or_unusable": false,
+          "credits": false,
+          "dominant_text": false,
+          "logo": false,
+          "title_card": false
+        },
+        "temporal_support_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06",
+          "SAMPLE_07",
+          "SAMPLE_08",
+          "SAMPLE_09",
+          "SAMPLE_10",
+          "SAMPLE_11",
+          "SAMPLE_12",
+          "SAMPLE_13",
+          "SAMPLE_14",
+          "SAMPLE_15"
+        ],
+        "utility_assessments": [
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_06",
+              "SAMPLE_08",
+              "SAMPLE_10"
+            ],
+            "utility_class": "conversation_scene"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "therapy_or_session"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "discussion_or_argument"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "meditation_or_stillness"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_08",
+              "SAMPLE_10"
+            ],
+            "utility_class": "reaction"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_06",
+              "SAMPLE_08",
+              "SAMPLE_10"
+            ],
+            "utility_class": "sustained_emotional_state"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10"
+            ],
+            "utility_class": "physical_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10"
+            ],
+            "utility_class": "nonverbal_interaction"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13",
+              "SAMPLE_14",
+              "SAMPLE_15"
+            ],
+            "utility_class": "walking_or_movement"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10"
+            ],
+            "utility_class": "concrete_action"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "object_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_06",
+              "SAMPLE_08",
+              "SAMPLE_10"
+            ],
+            "utility_class": "useful_state"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13",
+              "SAMPLE_14",
+              "SAMPLE_15"
+            ],
+            "utility_class": "environment_or_composition"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13",
+              "SAMPLE_14",
+              "SAMPLE_15"
+            ],
+            "utility_class": "establishing_visual"
+          }
+        ],
+        "visible_person_ids": [
+          "FULL_SHOT_0019:P2",
+          "FULL_SHOT_0019:P4",
+          "FULL_SHOT_0020:P1",
+          "FULL_SHOT_0020:P3",
+          "FULL_SHOT_0021:P7",
+          "FULL_SHOT_0021:P8",
+          "FULL_SHOT_0021:P16"
+        ],
+        "visible_reactions": [
+          "A woman smiles broadly while facing the other.",
+          "The pair lean together in a side embrace."
+        ],
+        "visible_states": [
+          "Two women sit facing each other in close views; one smiles broadly and gestures, and later they lean together with an arm around the other.",
+          "A wide beach view shows the seated pair, shore, water and sailboats."
+        ],
+        "visual_actions": [
+          "One woman puts an arm around the other and they lean together."
+        ],
+        "visual_assessment_complete": true,
+        "visual_moment_type": "reaction",
+        "visual_moments": [
+          {
+            "action_completeness": "true",
+            "asset_window_complete": "true",
+            "beginning_sample_id": "SAMPLE_06",
+            "completion_sample_id": "SAMPLE_10",
+            "continuity": "supported",
+            "development_sample_ids": [
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09"
+            ],
+            "end_frame_exclusive": 2188,
+            "moment_id": "M1",
+            "moment_kind": "complete_action",
+            "moment_usability": "usable",
+            "reuse_key": "two beach-seated women lean into a side embrace, close two-shot",
+            "sample_ids": [
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10"
+            ],
+            "start_frame": 2053,
+            "utility_class": "physical_interaction",
+            "visual_context_dependency": "low",
+            "visual_strength": "useful"
+          },
+          {
+            "action_completeness": "false",
+            "asset_window_complete": "true",
+            "beginning_sample_id": "SAMPLE_11",
+            "completion_sample_id": null,
+            "continuity": "supported",
+            "development_sample_ids": [
+              "SAMPLE_12",
+              "SAMPLE_13",
+              "SAMPLE_14"
+            ],
+            "end_frame_exclusive": 2266,
+            "moment_id": "M2",
+            "moment_kind": "composition",
+            "moment_usability": "usable",
+            "reuse_key": "wide beach shoreline with seated pair and sailboats",
+            "sample_ids": [
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13",
+              "SAMPLE_14",
+              "SAMPLE_15"
+            ],
+            "start_frame": 2188,
+            "utility_class": "environment_or_composition",
+            "visual_context_dependency": "low",
+            "visual_strength": "useful"
+          }
+        ],
+        "visual_utility_kind": "physical_interaction",
+        "visually_reusable": "true"
+      },
+      "present": true,
+      "semantic_attempts": 1,
+      "transport_dispatches": 1,
+      "validation_errors": [
+        "reusable_state_raw_action_completeness_must_be_false_or_unclear",
+        "reusable_state_requires_useful_state_utility",
+        "action_not_grounded_in_visible_structured_action",
+        "one_focus_directive_per_technical_shot"
+      ]
+    },
+    {
+      "batch_request_id": "77c6c0141916ecd8a2b4eb82f0450ccd44c2a3f8547a6b97072c5a78076fe648-2",
+      "event_fingerprint": "c85c01eb8b82e89b3294d3dba7e86cb6053d591491bb8addec70196c9704f564",
+      "event_id": "VE_ea6d3919c585fe80",
+      "offline_recovered": false,
+      "parsed_response": {
+        "action_evidence_ids": [],
+        "action_or_moment_complete": "unclear",
+        "confidence": 0.87,
+        "context_dependency": "low",
+        "conversation_present": "unclear",
+        "conversation_visual_signal": "useful_environment_or_composition",
+        "event_id": "VE_ea6d3919c585fe80",
+        "evidence_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06",
+          "SAMPLE_07",
+          "SAMPLE_08",
+          "SAMPLE_09",
+          "SAMPLE_10",
+          "SAMPLE_11",
+          "SAMPLE_12",
+          "SAMPLE_13",
+          "SAMPLE_14",
+          "SAMPLE_15",
+          "SAMPLE_16"
+        ],
+        "moment_status": "reusable_state",
+        "movement": "present",
+        "narrative_context_dependency": "high",
+        "object_evidence_ids": [],
+        "observed_actions": [],
+        "people_count": "2_plus",
+        "physical_interactions": [],
+        "represented_shot_ids": [
+          "FULL_SHOT_0022",
+          "FULL_SHOT_0023",
+          "FULL_SHOT_0024",
+          "FULL_SHOT_0025",
+          "FULL_SHOT_0026"
+        ],
+        "shot_focus_plan": [],
+        "sustained_state": "true",
+        "technical_observations": {
+          "black_or_empty": false,
+          "corrupt_or_unusable": false,
+          "credits": false,
+          "dominant_text": false,
+          "logo": false,
+          "title_card": false
+        },
+        "temporal_support_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06",
+          "SAMPLE_07",
+          "SAMPLE_08",
+          "SAMPLE_09",
+          "SAMPLE_10",
+          "SAMPLE_11",
+          "SAMPLE_12",
+          "SAMPLE_13",
+          "SAMPLE_14",
+          "SAMPLE_15",
+          "SAMPLE_16"
+        ],
+        "utility_assessments": [
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_05",
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13"
+            ],
+            "utility_class": "conversation_scene"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "therapy_or_session"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "discussion_or_argument"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "meditation_or_stillness"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_05",
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10",
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13"
+            ],
+            "utility_class": "reaction"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_05",
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10",
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13"
+            ],
+            "utility_class": "sustained_emotional_state"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "physical_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_05",
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10",
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13"
+            ],
+            "utility_class": "nonverbal_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10",
+              "SAMPLE_14",
+              "SAMPLE_15",
+              "SAMPLE_16"
+            ],
+            "utility_class": "walking_or_movement"
+          },
+          {
+            "assessment": "unclear",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10",
+              "SAMPLE_14",
+              "SAMPLE_15",
+              "SAMPLE_16"
+            ],
+            "utility_class": "concrete_action"
+          },
+          {
+            "assessment": "unclear",
+            "sample_ids": [
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_06",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10",
+              "SAMPLE_14",
+              "SAMPLE_15",
+              "SAMPLE_16"
+            ],
+            "utility_class": "object_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10",
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13"
+            ],
+            "utility_class": "useful_state"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_04",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10",
+              "SAMPLE_14",
+              "SAMPLE_15",
+              "SAMPLE_16"
+            ],
+            "utility_class": "environment_or_composition"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10",
+              "SAMPLE_14",
+              "SAMPLE_15",
+              "SAMPLE_16"
+            ],
+            "utility_class": "establishing_visual"
+          }
+        ],
+        "visible_person_ids": [
+          "FULL_SHOT_0022:P1",
+          "FULL_SHOT_0022:P2",
+          "FULL_SHOT_0022:P8",
+          "FULL_SHOT_0023:P2",
+          "FULL_SHOT_0023:P4",
+          "FULL_SHOT_0024:P7",
+          "FULL_SHOT_0024:P9",
+          "FULL_SHOT_0024:P16",
+          "FULL_SHOT_0025:P2",
+          "FULL_SHOT_0025:P3",
+          "FULL_SHOT_0026:P2",
+          "FULL_SHOT_0026:P5",
+          "FULL_SHOT_0026:P7"
+        ],
+        "visible_reactions": [
+          "The women smile as they look toward the volleyball player."
+        ],
+        "visible_states": [
+          "Two seated women watch a beach volleyball player approach and handle a ball; one woman raises her arm toward him.",
+          "The women smile in close views, while the wider shots show the beach, net, beachgoers and beachfront buildings."
+        ],
+        "visual_actions": [],
+        "visual_assessment_complete": true,
+        "visual_moment_type": "composition",
+        "visual_moments": [
+          {
+            "action_completeness": "false",
+            "asset_window_complete": "true",
+            "beginning_sample_id": "SAMPLE_08",
+            "completion_sample_id": null,
+            "continuity": "supported",
+            "development_sample_ids": [
+              "SAMPLE_09",
+              "SAMPLE_10",
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13"
+            ],
+            "end_frame_exclusive": 2477,
+            "moment_id": "M1",
+            "moment_kind": "composition",
+            "moment_usability": "usable",
+            "reuse_key": "beach volleyball player and seated women reacting in wide beach composition",
+            "sample_ids": [
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10",
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13"
+            ],
+            "start_frame": 2390,
+            "utility_class": "environment_or_composition",
+            "visual_context_dependency": "low",
+            "visual_strength": "useful"
+          }
+        ],
+        "visual_utility_kind": "environment",
+        "visually_reusable": "true"
+      },
+      "present": true,
+      "semantic_attempts": 1,
+      "transport_dispatches": 1,
+      "validation_errors": [
+        "reusable_state_requires_useful_state_utility",
+        "one_focus_directive_per_technical_shot"
+      ]
+    },
+    {
+      "batch_request_id": "77c6c0141916ecd8a2b4eb82f0450ccd44c2a3f8547a6b97072c5a78076fe648-2",
+      "event_fingerprint": "192b9ad01352a7dec2bcf7e897f8ee0e1764f0c3fa12247023b9ba7c1bcfe0d4",
+      "event_id": "VE_f6a1dc77dc7bccf9",
+      "offline_recovered": true,
+      "parsed_response": {
+        "action_evidence_ids": [],
+        "action_or_moment_complete": "unclear",
+        "confidence": 0.88,
+        "context_dependency": "low",
+        "conversation_present": "true",
+        "conversation_visual_signal": "generic_dialogue_only",
+        "event_id": "VE_f6a1dc77dc7bccf9",
+        "evidence_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05"
+        ],
+        "moment_status": "reusable_state",
+        "movement": "present",
+        "narrative_context_dependency": "high",
+        "object_evidence_ids": [],
+        "observed_actions": [],
+        "people_count": "2_plus",
+        "physical_interactions": [],
+        "represented_shot_ids": [
+          "FULL_SHOT_0027"
+        ],
+        "shot_focus_plan": [],
+        "sustained_state": "true",
+        "technical_observations": {
+          "black_or_empty": false,
+          "corrupt_or_unusable": false,
+          "credits": false,
+          "dominant_text": false,
+          "logo": false,
+          "title_card": false
+        },
+        "temporal_support_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05"
+        ],
+        "utility_assessments": [
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05"
+            ],
+            "utility_class": "conversation_scene"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "therapy_or_session"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "discussion_or_argument"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "meditation_or_stillness"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05"
+            ],
+            "utility_class": "reaction"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "sustained_emotional_state"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "physical_interaction"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05"
+            ],
+            "utility_class": "nonverbal_interaction"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "walking_or_movement"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "concrete_action"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "object_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05"
+            ],
+            "utility_class": "useful_state"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05"
+            ],
+            "utility_class": "environment_or_composition"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05"
+            ],
+            "utility_class": "establishing_visual"
+          }
+        ],
+        "visible_person_ids": [
+          "FULL_SHOT_0027:P1",
+          "FULL_SHOT_0027:P2",
+          "FULL_SHOT_0027:P3"
+        ],
+        "visible_reactions": [],
+        "visible_states": [
+          "Three people sit close together on the beach; the two foreground women are framed side-by-side.",
+          "One woman rests her cheek on her hand while the other faces forward and changes expression."
+        ],
+        "visual_actions": [],
+        "visual_assessment_complete": true,
+        "visual_moment_type": "sustained_state",
+        "visual_moments": [
+          {
+            "action_completeness": "false",
+            "asset_window_complete": "true",
+            "beginning_sample_id": "SAMPLE_01",
+            "completion_sample_id": null,
+            "continuity": "supported",
+            "development_sample_ids": [
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04"
+            ],
+            "end_frame_exclusive": 2701,
+            "moment_id": "M1",
+            "moment_kind": "sustained_state",
+            "moment_usability": "usable",
+            "reuse_key": "two seated women side-by-side on beach, one resting cheek on hand",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05"
+            ],
+            "start_frame": 2529,
+            "utility_class": "useful_state",
+            "visual_context_dependency": "low",
+            "visual_strength": "useful"
+          }
+        ],
+        "visual_utility_kind": "useful_state",
+        "visually_reusable": "true"
+      },
+      "present": true,
+      "semantic_attempts": 1,
+      "transport_dispatches": 1,
+      "validation_errors": [
+        "one_focus_directive_per_technical_shot"
+      ]
+    },
+    {
+      "batch_request_id": "77c6c0141916ecd8a2b4eb82f0450ccd44c2a3f8547a6b97072c5a78076fe648-2",
+      "event_fingerprint": "a22d1260f3ee2ad17d1a4e167f6b8db263dc3567d7c22de8401f1a86d77e0c1f",
+      "event_id": "VE_cf8f5537477c7c29",
+      "offline_recovered": false,
+      "parsed_response": {
+        "action_evidence_ids": [],
+        "action_or_moment_complete": "unclear",
+        "confidence": 0.91,
+        "context_dependency": "low",
+        "conversation_present": "true",
+        "conversation_visual_signal": "clear_reaction",
+        "event_id": "VE_cf8f5537477c7c29",
+        "evidence_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06",
+          "SAMPLE_07",
+          "SAMPLE_08",
+          "SAMPLE_09",
+          "SAMPLE_10"
+        ],
+        "moment_status": "reusable_state",
+        "movement": "present",
+        "narrative_context_dependency": "high",
+        "object_evidence_ids": [],
+        "observed_actions": [],
+        "people_count": "2_plus",
+        "physical_interactions": [],
+        "represented_shot_ids": [
+          "FULL_SHOT_0028",
+          "FULL_SHOT_0029"
+        ],
+        "shot_focus_plan": [],
+        "sustained_state": "true",
+        "technical_observations": {
+          "black_or_empty": false,
+          "corrupt_or_unusable": false,
+          "credits": false,
+          "dominant_text": false,
+          "logo": false,
+          "title_card": false
+        },
+        "temporal_support_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06",
+          "SAMPLE_07",
+          "SAMPLE_08",
+          "SAMPLE_09",
+          "SAMPLE_10"
+        ],
+        "utility_assessments": [
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_06",
+              "SAMPLE_08",
+              "SAMPLE_10"
+            ],
+            "utility_class": "conversation_scene"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "therapy_or_session"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "discussion_or_argument"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "meditation_or_stillness"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05"
+            ],
+            "utility_class": "reaction"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05"
+            ],
+            "utility_class": "sustained_emotional_state"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "physical_interaction"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05"
+            ],
+            "utility_class": "nonverbal_interaction"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "walking_or_movement"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "concrete_action"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "object_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_06",
+              "SAMPLE_08",
+              "SAMPLE_10"
+            ],
+            "utility_class": "useful_state"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_06",
+              "SAMPLE_08",
+              "SAMPLE_10"
+            ],
+            "utility_class": "environment_or_composition"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_06",
+              "SAMPLE_08",
+              "SAMPLE_10"
+            ],
+            "utility_class": "establishing_visual"
+          }
+        ],
+        "visible_person_ids": [
+          "FULL_SHOT_0028:P1",
+          "FULL_SHOT_0028:P4",
+          "FULL_SHOT_0028:P5",
+          "FULL_SHOT_0028:P6",
+          "FULL_SHOT_0029:P1",
+          "FULL_SHOT_0029:P2"
+        ],
+        "visible_reactions": [
+          "The woman in the patterned wrap changes facial expression while facing the other woman."
+        ],
+        "visible_states": [
+          "Two women sit facing each other; one woman's face shifts through several expressions as she faces the other.",
+          "The second shot shows both women seated together in a shared beach composition."
+        ],
+        "visual_actions": [],
+        "visual_assessment_complete": true,
+        "visual_moment_type": "reaction",
+        "visual_moments": [
+          {
+            "action_completeness": "false",
+            "asset_window_complete": "true",
+            "beginning_sample_id": "SAMPLE_01",
+            "completion_sample_id": null,
+            "continuity": "supported",
+            "development_sample_ids": [
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05"
+            ],
+            "end_frame_exclusive": 3000,
+            "moment_id": "M1",
+            "moment_kind": "reaction",
+            "moment_usability": "usable",
+            "reuse_key": "close reaction of woman in patterned wrap facing seated conversation partner",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05"
+            ],
+            "start_frame": 2701,
+            "utility_class": "reaction",
+            "visual_context_dependency": "low",
+            "visual_strength": "useful"
+          },
+          {
+            "action_completeness": "false",
+            "asset_window_complete": "true",
+            "beginning_sample_id": "SAMPLE_06",
+            "completion_sample_id": null,
+            "continuity": "supported",
+            "development_sample_ids": [
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09"
+            ],
+            "end_frame_exclusive": 3119,
+            "moment_id": "M2",
+            "moment_kind": "composition",
+            "moment_usability": "usable",
+            "reuse_key": "two seated women together in beach conversational two-shot",
+            "sample_ids": [
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10"
+            ],
+            "start_frame": 3000,
+            "utility_class": "conversation_scene",
+            "visual_context_dependency": "low",
+            "visual_strength": "useful"
+          }
+        ],
+        "visual_utility_kind": "clear_reaction",
+        "visually_reusable": "true"
+      },
+      "present": true,
+      "semantic_attempts": 1,
+      "transport_dispatches": 1,
+      "validation_errors": [
+        "reusable_state_requires_useful_state_utility",
+        "one_focus_directive_per_technical_shot"
+      ]
+    },
+    {
+      "batch_request_id": "77c6c0141916ecd8a2b4eb82f0450ccd44c2a3f8547a6b97072c5a78076fe648-2",
+      "event_fingerprint": "55e6139fea0777f8275f9508adc2d192aa1c98ee6314235b7d98bbde56e0b4c9",
+      "event_id": "VE_fddbf5f0841708fa",
+      "offline_recovered": false,
+      "parsed_response": {
+        "action_evidence_ids": [],
+        "action_or_moment_complete": "unclear",
+        "confidence": 0.89,
+        "context_dependency": "low",
+        "conversation_present": "true",
+        "conversation_visual_signal": "generic_dialogue_only",
+        "event_id": "VE_fddbf5f0841708fa",
+        "evidence_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06"
+        ],
+        "moment_status": "reusable_state",
+        "movement": "present",
+        "narrative_context_dependency": "high",
+        "object_evidence_ids": [],
+        "observed_actions": [],
+        "people_count": "2_plus",
+        "physical_interactions": [],
+        "represented_shot_ids": [
+          "FULL_SHOT_0030",
+          "FULL_SHOT_0031"
+        ],
+        "shot_focus_plan": [],
+        "sustained_state": "true",
+        "technical_observations": {
+          "black_or_empty": false,
+          "corrupt_or_unusable": false,
+          "credits": false,
+          "dominant_text": false,
+          "logo": false,
+          "title_card": false
+        },
+        "temporal_support_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06"
+        ],
+        "utility_assessments": [
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03"
+            ],
+            "utility_class": "conversation_scene"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "therapy_or_session"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "discussion_or_argument"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "meditation_or_stillness"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "reaction"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "sustained_emotional_state"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "physical_interaction"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03"
+            ],
+            "utility_class": "nonverbal_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_06"
+            ],
+            "utility_class": "walking_or_movement"
+          },
+          {
+            "assessment": "unclear",
+            "sample_ids": [
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_06"
+            ],
+            "utility_class": "concrete_action"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "object_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_06"
+            ],
+            "utility_class": "useful_state"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_06"
+            ],
+            "utility_class": "environment_or_composition"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_06"
+            ],
+            "utility_class": "establishing_visual"
+          }
+        ],
+        "visible_person_ids": [
+          "FULL_SHOT_0030:P1",
+          "FULL_SHOT_0030:P3",
+          "FULL_SHOT_0031:P5",
+          "FULL_SHOT_0031:P6",
+          "FULL_SHOT_0031:P9",
+          "FULL_SHOT_0031:P11"
+        ],
+        "visible_reactions": [],
+        "visible_states": [
+          "Two women sit close together in a beach conversation; one speaks and the other watches.",
+          "A wider shot shows several people seated or standing on the beach beside a volleyball net."
+        ],
+        "visual_actions": [],
+        "visual_assessment_complete": true,
+        "visual_moment_type": "sustained_state",
+        "visual_moments": [
+          {
+            "action_completeness": "false",
+            "asset_window_complete": "true",
+            "beginning_sample_id": "SAMPLE_01",
+            "completion_sample_id": null,
+            "continuity": "supported",
+            "development_sample_ids": [
+              "SAMPLE_02"
+            ],
+            "end_frame_exclusive": 3240,
+            "moment_id": "M1",
+            "moment_kind": "sustained_state",
+            "moment_usability": "usable",
+            "reuse_key": "two women seated together in close beach conversation",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04"
+            ],
+            "start_frame": 3119,
+            "utility_class": "conversation_scene",
+            "visual_context_dependency": "low",
+            "visual_strength": "useful"
+          },
+          {
+            "action_completeness": "false",
+            "asset_window_complete": "true",
+            "beginning_sample_id": "SAMPLE_04",
+            "completion_sample_id": null,
+            "continuity": "supported",
+            "development_sample_ids": [
+              "SAMPLE_05"
+            ],
+            "end_frame_exclusive": 3308,
+            "moment_id": "M2",
+            "moment_kind": "composition",
+            "moment_usability": "usable",
+            "reuse_key": "beachgoers gathered beside beach volleyball net",
+            "sample_ids": [
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_06"
+            ],
+            "start_frame": 3240,
+            "utility_class": "environment_or_composition",
+            "visual_context_dependency": "low",
+            "visual_strength": "useful"
+          }
+        ],
+        "visual_utility_kind": "generic_dialogue_only",
+        "visually_reusable": "true"
+      },
+      "present": true,
+      "semantic_attempts": 1,
+      "transport_dispatches": 1,
+      "validation_errors": [
+        "reusable_state_requires_useful_state_utility",
+        "one_focus_directive_per_technical_shot",
+        "insufficient_local_temporal_support"
+      ]
+    },
+    {
+      "batch_request_id": "77c6c0141916ecd8a2b4eb82f0450ccd44c2a3f8547a6b97072c5a78076fe648-2",
+      "event_fingerprint": "c910d3b7a0d1de08cfb30af3468766e31b23c1907644440fc6c324444f10988f",
+      "event_id": "VE_3666fcaafc03e618",
+      "offline_recovered": false,
+      "parsed_response": {
+        "action_evidence_ids": [],
+        "action_or_moment_complete": "unclear",
+        "confidence": 0.91,
+        "context_dependency": "low",
+        "conversation_present": "true",
+        "conversation_visual_signal": "strong_body_language",
+        "event_id": "VE_3666fcaafc03e618",
+        "evidence_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06",
+          "SAMPLE_07",
+          "SAMPLE_08",
+          "SAMPLE_09",
+          "SAMPLE_10",
+          "SAMPLE_11",
+          "SAMPLE_12",
+          "SAMPLE_13",
+          "SAMPLE_14",
+          "SAMPLE_15"
+        ],
+        "moment_status": "reusable_state",
+        "movement": "present",
+        "narrative_context_dependency": "high",
+        "object_evidence_ids": [],
+        "observed_actions": [],
+        "people_count": "2_plus",
+        "physical_interactions": [],
+        "represented_shot_ids": [
+          "FULL_SHOT_0032",
+          "FULL_SHOT_0033",
+          "FULL_SHOT_0034"
+        ],
+        "shot_focus_plan": [],
+        "sustained_state": "true",
+        "technical_observations": {
+          "black_or_empty": false,
+          "corrupt_or_unusable": false,
+          "credits": false,
+          "dominant_text": false,
+          "logo": false,
+          "title_card": false
+        },
+        "temporal_support_sample_ids": [
+          "SAMPLE_01",
+          "SAMPLE_02",
+          "SAMPLE_03",
+          "SAMPLE_04",
+          "SAMPLE_05",
+          "SAMPLE_06",
+          "SAMPLE_07",
+          "SAMPLE_08",
+          "SAMPLE_09",
+          "SAMPLE_10",
+          "SAMPLE_11",
+          "SAMPLE_12",
+          "SAMPLE_13",
+          "SAMPLE_14",
+          "SAMPLE_15"
+        ],
+        "utility_assessments": [
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13",
+              "SAMPLE_14",
+              "SAMPLE_15"
+            ],
+            "utility_class": "conversation_scene"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "therapy_or_session"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "discussion_or_argument"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "meditation_or_stillness"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_03",
+              "SAMPLE_05",
+              "SAMPLE_08",
+              "SAMPLE_10",
+              "SAMPLE_13",
+              "SAMPLE_15"
+            ],
+            "utility_class": "reaction"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "sustained_emotional_state"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "physical_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13",
+              "SAMPLE_14",
+              "SAMPLE_15"
+            ],
+            "utility_class": "nonverbal_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10"
+            ],
+            "utility_class": "walking_or_movement"
+          },
+          {
+            "assessment": "weak",
+            "sample_ids": [
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10"
+            ],
+            "utility_class": "concrete_action"
+          },
+          {
+            "assessment": "absent",
+            "sample_ids": [],
+            "utility_class": "object_interaction"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13",
+              "SAMPLE_14",
+              "SAMPLE_15"
+            ],
+            "utility_class": "useful_state"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10"
+            ],
+            "utility_class": "environment_or_composition"
+          },
+          {
+            "assessment": "useful",
+            "sample_ids": [
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10"
+            ],
+            "utility_class": "establishing_visual"
+          }
+        ],
+        "visible_person_ids": [
+          "FULL_SHOT_0032:P2",
+          "FULL_SHOT_0032:P4",
+          "FULL_SHOT_0033:P2",
+          "FULL_SHOT_0033:P3",
+          "FULL_SHOT_0034:P2",
+          "FULL_SHOT_0034:P4"
+        ],
+        "visible_reactions": [],
+        "visible_states": [
+          "Two women sit facing each other on the beach; one uses expressive hand gestures while speaking.",
+          "A separate wider view shows people standing near a beach volleyball net; another close beach view returns to the two women."
+        ],
+        "visual_actions": [],
+        "visual_assessment_complete": true,
+        "visual_moment_type": "sustained_state",
+        "visual_moments": [
+          {
+            "action_completeness": "false",
+            "asset_window_complete": "true",
+            "beginning_sample_id": "SAMPLE_01",
+            "completion_sample_id": null,
+            "continuity": "supported",
+            "development_sample_ids": [
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04"
+            ],
+            "end_frame_exclusive": 3583,
+            "moment_id": "M1",
+            "moment_kind": "sustained_state",
+            "moment_usability": "usable",
+            "reuse_key": "two seated women in close beach conversation with expressive hand gestures",
+            "sample_ids": [
+              "SAMPLE_01",
+              "SAMPLE_02",
+              "SAMPLE_03",
+              "SAMPLE_04",
+              "SAMPLE_05",
+              "SAMPLE_06"
+            ],
+            "start_frame": 3308,
+            "utility_class": "conversation_scene",
+            "visual_context_dependency": "low",
+            "visual_strength": "useful"
+          },
+          {
+            "action_completeness": "false",
+            "asset_window_complete": "true",
+            "beginning_sample_id": "SAMPLE_06",
+            "completion_sample_id": null,
+            "continuity": "supported",
+            "development_sample_ids": [
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09"
+            ],
+            "end_frame_exclusive": 3631,
+            "moment_id": "M2",
+            "moment_kind": "composition",
+            "moment_usability": "usable",
+            "reuse_key": "beach volleyball group and net in wide view",
+            "sample_ids": [
+              "SAMPLE_06",
+              "SAMPLE_07",
+              "SAMPLE_08",
+              "SAMPLE_09",
+              "SAMPLE_10"
+            ],
+            "start_frame": 3583,
+            "utility_class": "environment_or_composition",
+            "visual_context_dependency": "low",
+            "visual_strength": "useful"
+          },
+          {
+            "action_completeness": "false",
+            "asset_window_complete": "true",
+            "beginning_sample_id": "SAMPLE_11",
+            "completion_sample_id": null,
+            "continuity": "supported",
+            "development_sample_ids": [
+              "SAMPLE_12",
+              "SAMPLE_13",
+              "SAMPLE_14"
+            ],
+            "end_frame_exclusive": 3685,
+            "moment_id": "M3",
+            "moment_kind": "sustained_state",
+            "moment_usability": "usable",
+            "reuse_key": "two seated women in beach conversation, close shared framing",
+            "sample_ids": [
+              "SAMPLE_11",
+              "SAMPLE_12",
+              "SAMPLE_13",
+              "SAMPLE_14",
+              "SAMPLE_15"
+            ],
+            "start_frame": 3631,
+            "utility_class": "conversation_scene",
+            "visual_context_dependency": "low",
+            "visual_strength": "useful"
+          }
+        ],
+        "visual_utility_kind": "strong_nonverbal_interaction",
+        "visually_reusable": "true"
+      },
+      "present": true,
+      "semantic_attempts": 1,
+      "transport_dispatches": 1,
+      "validation_errors": [
+        "reusable_state_requires_useful_state_utility",
+        "one_focus_directive_per_technical_shot",
+        "insufficient_local_temporal_support"
+      ]
+    }
+  ],
+  "offline_recovery": {
+    "KEEP": 18,
+    "PROVIDER_BLOCKED": 1,
+    "REJECT": 21,
+    "REVIEW": 0,
+    "VALID": 1,
+    "VALIDATION_BLOCKED": 7,
+    "planned_windows": 18,
+    "provider_calls": 0,
+    "recovered_event_ids": [
+      "VE_f6a1dc77dc7bccf9"
+    ],
+    "remaining_unresolved": 135
+  },
+  "raw_response_hashes": {
+    "runs/mi-otra-yo-s03e03/semantic_observations/visual_utility_v1/requests/77c6c0141916ecd8a2b4eb82f0450ccd44c2a3f8547a6b97072c5a78076fe648-1.json": "6f8b2981bc9f3c6feff2bce0274f07ce3ce01f9fd307ec8a7c7038e54d93bcee",
+    "runs/mi-otra-yo-s03e03/semantic_observations/visual_utility_v1/requests/77c6c0141916ecd8a2b4eb82f0450ccd44c2a3f8547a6b97072c5a78076fe648-2.json": "c89095bbf4a1b2291cba8b9f05e662b83b57685f7b7fc89baf7f79d208cb781d",
+    "runs/mi-otra-yo-s03e03/semantic_observations/visual_utility_v1/requests/d19cd87c20d37be9c1478009b0afa79372cdbb1966e685abe53cadb0f73829ce-1.json": "1d5fbfd4f5c1e40e08c592f9895780422b1d0ce84054e6686a31d2fcd90015f3"
+  },
+  "requests": [
+    {
+      "failure": {
+        "attempts": 1,
+        "error_code": null,
+        "http_status": null,
+        "reason": "timeout",
+        "retryable": true
+      },
+      "identity": {
+        "batch_schema_version": "visual_utility_batch_v1",
+        "evidence_profile": "temporal_evidence_v2",
+        "model": "gpt-6-luna",
+        "ordered_event_input_fingerprints": [
+          "757b831a3a075dcc29255ee8180ac19654bcb58fb9c67ced7cdce31f0173ada5",
+          "e246eea7beacaa2c5ee75009cdc147b4577bb45d0ffe7facfb93c07bae6deae1",
+          "0d003ca5a6e19d65c7f73a553324231cfe0726d884d146fb0c06c661c7d3d57a",
+          "c85c01eb8b82e89b3294d3dba7e86cb6053d591491bb8addec70196c9704f564",
+          "192b9ad01352a7dec2bcf7e897f8ee0e1764f0c3fa12247023b9ba7c1bcfe0d4",
+          "a22d1260f3ee2ad17d1a4e167f6b8db263dc3567d7c22de8401f1a86d77e0c1f",
+          "55e6139fea0777f8275f9508adc2d192aa1c98ee6314235b7d98bbde56e0b4c9",
+          "c910d3b7a0d1de08cfb30af3468766e31b23c1907644440fc6c324444f10988f"
+        ],
+        "prompt_version": "visual_utility_batch_prompt_v1",
+        "provider": "openai",
+        "schema_version": "visual_utility_observation_v1"
+      },
+      "request_id": "77c6c0141916ecd8a2b4eb82f0450ccd44c2a3f8547a6b97072c5a78076fe648-1",
+      "requested_event_ids": [
+        "VE_ce865311d8a14107",
+        "VE_5323966610e1583a",
+        "VE_1fdc590d300b260f",
+        "VE_ea6d3919c585fe80",
+        "VE_f6a1dc77dc7bccf9",
+        "VE_cf8f5537477c7c29",
+        "VE_fddbf5f0841708fa",
+        "VE_3666fcaafc03e618"
+      ],
+      "status": "TRANSPORT_DEFERRED"
+    },
+    {
+      "cost_usd": 0.009818700000000001,
+      "http_attempts": 1,
+      "identity": {
+        "batch_schema_version": "visual_utility_batch_v1",
+        "evidence_profile": "temporal_evidence_v2",
+        "model": "gpt-6-luna",
+        "ordered_event_input_fingerprints": [
+          "757b831a3a075dcc29255ee8180ac19654bcb58fb9c67ced7cdce31f0173ada5",
+          "e246eea7beacaa2c5ee75009cdc147b4577bb45d0ffe7facfb93c07bae6deae1",
+          "0d003ca5a6e19d65c7f73a553324231cfe0726d884d146fb0c06c661c7d3d57a",
+          "c85c01eb8b82e89b3294d3dba7e86cb6053d591491bb8addec70196c9704f564",
+          "192b9ad01352a7dec2bcf7e897f8ee0e1764f0c3fa12247023b9ba7c1bcfe0d4",
+          "a22d1260f3ee2ad17d1a4e167f6b8db263dc3567d7c22de8401f1a86d77e0c1f",
+          "55e6139fea0777f8275f9508adc2d192aa1c98ee6314235b7d98bbde56e0b4c9",
+          "c910d3b7a0d1de08cfb30af3468766e31b23c1907644440fc6c324444f10988f"
+        ],
+        "prompt_version": "visual_utility_batch_prompt_v1",
+        "provider": "openai",
+        "schema_version": "visual_utility_observation_v1"
+      },
+      "model": "gpt-6-luna",
+      "provider": "openai",
+      "request_id": "77c6c0141916ecd8a2b4eb82f0450ccd44c2a3f8547a6b97072c5a78076fe648-2",
+      "requested_event_ids": [
+        "VE_ce865311d8a14107",
+        "VE_5323966610e1583a",
+        "VE_1fdc590d300b260f",
+        "VE_ea6d3919c585fe80",
+        "VE_f6a1dc77dc7bccf9",
+        "VE_cf8f5537477c7c29",
+        "VE_fddbf5f0841708fa",
+        "VE_3666fcaafc03e618"
+      ],
+      "response": {
+        "events": [
+          "{\"event_id\":\"VE_ce865311d8a14107\",\"represented_shot_ids\":[\"FULL_SHOT_0013\",\"FULL_SHOT_0014\",\"FULL_SHOT_0015\"],\"people_count\":\"2_plus\",\"visible_person_ids\":[\"FULL_SHOT_0013:P2\",\"FULL_SHOT_0013:P3\",\"FULL_SHOT_0014:P6\",\"FULL_SHOT_0015:P9\",\"FULL_SHOT_0015:P16\",\"FULL_SHOT_0015:P17\"],\"action_evidence_ids\":[],\"object_evidence_ids\":[],\"visible_states\":[\"People sit together on a sandy beach; a woman in a patterned wrap leans forward beside a woman in white.\",\"A wide view shows beach, sea, sailboats, umbrellas, and distant beachgoers.\",\"The two seated women appear together in a wider beach-and-buildings composition.\"],\"movement\":\"unclear\",\"physical_interactions\":[],\"visible_reactions\":[],\"conversation_present\":\"unclear\",\"conversation_visual_signal\":\"useful_environment_or_composition\",\"visual_utility_kind\":\"environment\",\"action_or_moment_complete\":\"unclear\",\"context_dependency\":\"low\",\"technical_observations\":{\"title_card\":false,\"credits\":false,\"logo\":false,\"dominant_text\":false,\"black_or_empty\":false,\"corrupt_or_unusable\":false},\"shot_focus_plan\":[],\"moment_status\":\"reusable_state\",\"temporal_support_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"],\"visual_actions\":[],\"observed_actions\":[],\"visual_moments\":[{\"moment_id\":\"M1\",\"utility_class\":\"environment_or_composition\",\"visual_strength\":\"useful\",\"moment_kind\":\"composition\",\"action_completeness\":\"false\",\"moment_usability\":\"usable\",\"asset_window_complete\":\"true\",\"visual_context_dependency\":\"low\",\"start_frame\":1204,\"end_frame_exclusive\":1496,\"beginning_sample_id\":\"SAMPLE_07\",\"development_sample_ids\":[\"SAMPLE_08\"],\"completion_sample_id\":null,\"sample_ids\":[\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"],\"continuity\":\"supported\",\"reuse_key\":\"wide beach group with seated women, shoreline and beachfront buildings\"}],\"visual_assessment_complete\":true,\"narrative_context_dependency\":\"high\",\"visually_reusable\":\"true\",\"visual_moment_type\":\"composition\",\"sustained_state\":\"true\",\"utility_assessments\":[{\"utility_class\":\"conversation_scene\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"]},{\"utility_class\":\"therapy_or_session\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"discussion_or_argument\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"meditation_or_stillness\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"reaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"sustained_emotional_state\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"physical_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"nonverbal_interaction\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\"]},{\"utility_class\":\"walking_or_movement\",\"assessment\":\"unclear\",\"sample_ids\":[\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"]},{\"utility_class\":\"concrete_action\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"object_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"useful_state\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"]},{\"utility_class\":\"environment_or_composition\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"]},{\"utility_class\":\"establishing_visual\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\"]}],\"confidence\":0.85,\"evidence_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"]}",
+          "{\"event_id\":\"VE_5323966610e1583a\",\"represented_shot_ids\":[\"FULL_SHOT_0016\",\"FULL_SHOT_0017\",\"FULL_SHOT_0018\"],\"people_count\":\"2_plus\",\"visible_person_ids\":[\"FULL_SHOT_0016:P2\",\"FULL_SHOT_0016:P3\",\"FULL_SHOT_0017:P4\",\"FULL_SHOT_0017:P5\",\"FULL_SHOT_0018:P1\",\"FULL_SHOT_0018:P2\"],\"action_evidence_ids\":[],\"object_evidence_ids\":[],\"visible_states\":[\"Two women sit close together on the beach, facing one another; the woman in white makes visible hand gestures while the other listens.\",\"Beach umbrellas, sand and people are visible in the background.\"],\"movement\":\"present\",\"physical_interactions\":[],\"visible_reactions\":[],\"conversation_present\":\"true\",\"conversation_visual_signal\":\"strong_body_language\",\"visual_utility_kind\":\"strong_nonverbal_interaction\",\"action_or_moment_complete\":\"unclear\",\"context_dependency\":\"low\",\"technical_observations\":{\"title_card\":false,\"credits\":false,\"logo\":false,\"dominant_text\":false,\"black_or_empty\":false,\"corrupt_or_unusable\":false},\"shot_focus_plan\":[],\"moment_status\":\"reusable_state\",\"temporal_support_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"],\"visual_actions\":[],\"observed_actions\":[],\"visual_moments\":[{\"moment_id\":\"M1\",\"utility_class\":\"conversation_scene\",\"visual_strength\":\"useful\",\"moment_kind\":\"sustained_state\",\"action_completeness\":\"false\",\"moment_usability\":\"usable\",\"asset_window_complete\":\"true\",\"visual_context_dependency\":\"low\",\"start_frame\":1496,\"end_frame_exclusive\":1672,\"beginning_sample_id\":\"SAMPLE_01\",\"development_sample_ids\":[\"SAMPLE_02\"],\"completion_sample_id\":null,\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\"],\"continuity\":\"supported\",\"reuse_key\":\"two seated women in beach conversation, close shared framing\"}],\"visual_assessment_complete\":true,\"narrative_context_dependency\":\"high\",\"visually_reusable\":\"true\",\"visual_moment_type\":\"sustained_state\",\"sustained_state\":\"true\",\"utility_assessments\":[{\"utility_class\":\"conversation_scene\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"]},{\"utility_class\":\"therapy_or_session\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"discussion_or_argument\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"meditation_or_stillness\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"reaction\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_05\",\"SAMPLE_08\",\"SAMPLE_09\"]},{\"utility_class\":\"sustained_emotional_state\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"physical_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"nonverbal_interaction\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_05\",\"SAMPLE_08\",\"SAMPLE_09\"]},{\"utility_class\":\"walking_or_movement\",\"assessment\":\"unclear\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"]},{\"utility_class\":\"concrete_action\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"object_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"useful_state\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_05\",\"SAMPLE_08\",\"SAMPLE_09\"]},{\"utility_class\":\"environment_or_composition\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_04\",\"SAMPLE_07\",\"SAMPLE_08\"]},{\"utility_class\":\"establishing_visual\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_04\",\"SAMPLE_07\"]}],\"confidence\":0.91,\"evidence_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"]}",
+          "{\"event_id\":\"VE_1fdc590d300b260f\",\"represented_shot_ids\":[\"FULL_SHOT_0019\",\"FULL_SHOT_0020\",\"FULL_SHOT_0021\"],\"people_count\":\"2_plus\",\"visible_person_ids\":[\"FULL_SHOT_0019:P2\",\"FULL_SHOT_0019:P4\",\"FULL_SHOT_0020:P1\",\"FULL_SHOT_0020:P3\",\"FULL_SHOT_0021:P7\",\"FULL_SHOT_0021:P8\",\"FULL_SHOT_0021:P16\"],\"action_evidence_ids\":[],\"object_evidence_ids\":[],\"visible_states\":[\"Two women sit facing each other in close views; one smiles broadly and gestures, and later they lean together with an arm around the other.\",\"A wide beach view shows the seated pair, shore, water and sailboats.\"],\"movement\":\"present\",\"physical_interactions\":[\"One woman puts an arm around the other as they lean together.\"],\"visible_reactions\":[\"A woman smiles broadly while facing the other.\",\"The pair lean together in a side embrace.\"],\"conversation_present\":\"true\",\"conversation_visual_signal\":\"physical_interaction\",\"visual_utility_kind\":\"physical_interaction\",\"action_or_moment_complete\":\"true\",\"context_dependency\":\"low\",\"technical_observations\":{\"title_card\":false,\"credits\":false,\"logo\":false,\"dominant_text\":false,\"black_or_empty\":false,\"corrupt_or_unusable\":false},\"shot_focus_plan\":[],\"moment_status\":\"reusable_state\",\"temporal_support_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\"],\"visual_actions\":[\"One woman puts an arm around the other and they lean together.\"],\"observed_actions\":[{\"canonical_label\":\"Two seated women lean together in an embrace, with one woman wrapping an arm around the other.\",\"evidence_type\":\"distinct_visible_action_or_reaction\",\"sample_ids\":[\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\"]}],\"visual_moments\":[{\"moment_id\":\"M1\",\"utility_class\":\"physical_interaction\",\"visual_strength\":\"useful\",\"moment_kind\":\"complete_action\",\"action_completeness\":\"true\",\"moment_usability\":\"usable\",\"asset_window_complete\":\"true\",\"visual_context_dependency\":\"low\",\"start_frame\":2053,\"end_frame_exclusive\":2188,\"beginning_sample_id\":\"SAMPLE_06\",\"development_sample_ids\":[\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"],\"completion_sample_id\":\"SAMPLE_10\",\"sample_ids\":[\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\"],\"continuity\":\"supported\",\"reuse_key\":\"two beach-seated women lean into a side embrace, close two-shot\"},{\"moment_id\":\"M2\",\"utility_class\":\"environment_or_composition\",\"visual_strength\":\"useful\",\"moment_kind\":\"composition\",\"action_completeness\":\"false\",\"moment_usability\":\"usable\",\"asset_window_complete\":\"true\",\"visual_context_dependency\":\"low\",\"start_frame\":2188,\"end_frame_exclusive\":2266,\"beginning_sample_id\":\"SAMPLE_11\",\"development_sample_ids\":[\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\"],\"completion_sample_id\":null,\"sample_ids\":[\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\"],\"continuity\":\"supported\",\"reuse_key\":\"wide beach shoreline with seated pair and sailboats\"}],\"visual_assessment_complete\":true,\"narrative_context_dependency\":\"high\",\"visually_reusable\":\"true\",\"visual_moment_type\":\"reaction\",\"sustained_state\":\"unclear\",\"utility_assessments\":[{\"utility_class\":\"conversation_scene\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_06\",\"SAMPLE_08\",\"SAMPLE_10\"]},{\"utility_class\":\"therapy_or_session\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"discussion_or_argument\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"meditation_or_stillness\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"reaction\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_08\",\"SAMPLE_10\"]},{\"utility_class\":\"sustained_emotional_state\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_06\",\"SAMPLE_08\",\"SAMPLE_10\"]},{\"utility_class\":\"physical_interaction\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\"]},{\"utility_class\":\"nonverbal_interaction\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\"]},{\"utility_class\":\"walking_or_movement\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\"]},{\"utility_class\":\"concrete_action\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\"]},{\"utility_class\":\"object_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"useful_state\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_06\",\"SAMPLE_08\",\"SAMPLE_10\"]},{\"utility_class\":\"environment_or_composition\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\"]},{\"utility_class\":\"establishing_visual\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\"]}],\"confidence\":0.94,\"evidence_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\"]}",
+          "{\"event_id\":\"VE_ea6d3919c585fe80\",\"represented_shot_ids\":[\"FULL_SHOT_0022\",\"FULL_SHOT_0023\",\"FULL_SHOT_0024\",\"FULL_SHOT_0025\",\"FULL_SHOT_0026\"],\"people_count\":\"2_plus\",\"visible_person_ids\":[\"FULL_SHOT_0022:P1\",\"FULL_SHOT_0022:P2\",\"FULL_SHOT_0022:P8\",\"FULL_SHOT_0023:P2\",\"FULL_SHOT_0023:P4\",\"FULL_SHOT_0024:P7\",\"FULL_SHOT_0024:P9\",\"FULL_SHOT_0024:P16\",\"FULL_SHOT_0025:P2\",\"FULL_SHOT_0025:P3\",\"FULL_SHOT_0026:P2\",\"FULL_SHOT_0026:P5\",\"FULL_SHOT_0026:P7\"],\"action_evidence_ids\":[],\"object_evidence_ids\":[],\"visible_states\":[\"Two seated women watch a beach volleyball player approach and handle a ball; one woman raises her arm toward him.\",\"The women smile in close views, while the wider shots show the beach, net, beachgoers and beachfront buildings.\"],\"movement\":\"present\",\"physical_interactions\":[],\"visible_reactions\":[\"The women smile as they look toward the volleyball player.\"],\"conversation_present\":\"unclear\",\"conversation_visual_signal\":\"useful_environment_or_composition\",\"visual_utility_kind\":\"environment\",\"action_or_moment_complete\":\"unclear\",\"context_dependency\":\"low\",\"technical_observations\":{\"title_card\":false,\"credits\":false,\"logo\":false,\"dominant_text\":false,\"black_or_empty\":false,\"corrupt_or_unusable\":false},\"shot_focus_plan\":[],\"moment_status\":\"reusable_state\",\"temporal_support_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\",\"SAMPLE_16\"],\"visual_actions\":[],\"observed_actions\":[],\"visual_moments\":[{\"moment_id\":\"M1\",\"utility_class\":\"environment_or_composition\",\"visual_strength\":\"useful\",\"moment_kind\":\"composition\",\"action_completeness\":\"false\",\"moment_usability\":\"usable\",\"asset_window_complete\":\"true\",\"visual_context_dependency\":\"low\",\"start_frame\":2390,\"end_frame_exclusive\":2477,\"beginning_sample_id\":\"SAMPLE_08\",\"development_sample_ids\":[\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\"],\"completion_sample_id\":null,\"sample_ids\":[\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\"],\"continuity\":\"supported\",\"reuse_key\":\"beach volleyball player and seated women reacting in wide beach composition\"}],\"visual_assessment_complete\":true,\"narrative_context_dependency\":\"high\",\"visually_reusable\":\"true\",\"visual_moment_type\":\"composition\",\"sustained_state\":\"true\",\"utility_assessments\":[{\"utility_class\":\"conversation_scene\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\"]},{\"utility_class\":\"therapy_or_session\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"discussion_or_argument\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"meditation_or_stillness\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"reaction\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\"]},{\"utility_class\":\"sustained_emotional_state\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\"]},{\"utility_class\":\"physical_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"nonverbal_interaction\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\"]},{\"utility_class\":\"walking_or_movement\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_14\",\"SAMPLE_15\",\"SAMPLE_16\"]},{\"utility_class\":\"concrete_action\",\"assessment\":\"unclear\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_14\",\"SAMPLE_15\",\"SAMPLE_16\"]},{\"utility_class\":\"object_interaction\",\"assessment\":\"unclear\",\"sample_ids\":[\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_06\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_14\",\"SAMPLE_15\",\"SAMPLE_16\"]},{\"utility_class\":\"useful_state\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\"]},{\"utility_class\":\"environment_or_composition\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_04\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_14\",\"SAMPLE_15\",\"SAMPLE_16\"]},{\"utility_class\":\"establishing_visual\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_14\",\"SAMPLE_15\",\"SAMPLE_16\"]}],\"confidence\":0.87,\"evidence_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\",\"SAMPLE_16\"]}",
+          "{\"event_id\":\"VE_f6a1dc77dc7bccf9\",\"represented_shot_ids\":[\"FULL_SHOT_0027\"],\"people_count\":\"2_plus\",\"visible_person_ids\":[\"FULL_SHOT_0027:P1\",\"FULL_SHOT_0027:P2\",\"FULL_SHOT_0027:P3\"],\"action_evidence_ids\":[],\"object_evidence_ids\":[],\"visible_states\":[\"Three people sit close together on the beach; the two foreground women are framed side-by-side.\",\"One woman rests her cheek on her hand while the other faces forward and changes expression.\"],\"movement\":\"present\",\"physical_interactions\":[],\"visible_reactions\":[],\"conversation_present\":\"true\",\"conversation_visual_signal\":\"generic_dialogue_only\",\"visual_utility_kind\":\"useful_state\",\"action_or_moment_complete\":\"unclear\",\"context_dependency\":\"low\",\"technical_observations\":{\"title_card\":false,\"credits\":false,\"logo\":false,\"dominant_text\":false,\"black_or_empty\":false,\"corrupt_or_unusable\":false},\"shot_focus_plan\":[],\"moment_status\":\"reusable_state\",\"temporal_support_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"],\"visual_actions\":[],\"observed_actions\":[],\"visual_moments\":[{\"moment_id\":\"M1\",\"utility_class\":\"useful_state\",\"visual_strength\":\"useful\",\"moment_kind\":\"sustained_state\",\"action_completeness\":\"false\",\"moment_usability\":\"usable\",\"asset_window_complete\":\"true\",\"visual_context_dependency\":\"low\",\"start_frame\":2529,\"end_frame_exclusive\":2701,\"beginning_sample_id\":\"SAMPLE_01\",\"development_sample_ids\":[\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\"],\"completion_sample_id\":null,\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"],\"continuity\":\"supported\",\"reuse_key\":\"two seated women side-by-side on beach, one resting cheek on hand\"}],\"visual_assessment_complete\":true,\"narrative_context_dependency\":\"high\",\"visually_reusable\":\"true\",\"visual_moment_type\":\"sustained_state\",\"sustained_state\":\"true\",\"utility_assessments\":[{\"utility_class\":\"conversation_scene\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"]},{\"utility_class\":\"therapy_or_session\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"discussion_or_argument\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"meditation_or_stillness\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"reaction\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"]},{\"utility_class\":\"sustained_emotional_state\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"physical_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"nonverbal_interaction\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"]},{\"utility_class\":\"walking_or_movement\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"concrete_action\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"object_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"useful_state\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"]},{\"utility_class\":\"environment_or_composition\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"]},{\"utility_class\":\"establishing_visual\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"]}],\"confidence\":0.88,\"evidence_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"]}",
+          "{\"event_id\":\"VE_cf8f5537477c7c29\",\"represented_shot_ids\":[\"FULL_SHOT_0028\",\"FULL_SHOT_0029\"],\"people_count\":\"2_plus\",\"visible_person_ids\":[\"FULL_SHOT_0028:P1\",\"FULL_SHOT_0028:P4\",\"FULL_SHOT_0028:P5\",\"FULL_SHOT_0028:P6\",\"FULL_SHOT_0029:P1\",\"FULL_SHOT_0029:P2\"],\"action_evidence_ids\":[],\"object_evidence_ids\":[],\"visible_states\":[\"Two women sit facing each other; one woman's face shifts through several expressions as she faces the other.\",\"The second shot shows both women seated together in a shared beach composition.\"],\"movement\":\"present\",\"physical_interactions\":[],\"visible_reactions\":[\"The woman in the patterned wrap changes facial expression while facing the other woman.\"],\"conversation_present\":\"true\",\"conversation_visual_signal\":\"clear_reaction\",\"visual_utility_kind\":\"clear_reaction\",\"action_or_moment_complete\":\"unclear\",\"context_dependency\":\"low\",\"technical_observations\":{\"title_card\":false,\"credits\":false,\"logo\":false,\"dominant_text\":false,\"black_or_empty\":false,\"corrupt_or_unusable\":false},\"shot_focus_plan\":[],\"moment_status\":\"reusable_state\",\"temporal_support_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\"],\"visual_actions\":[],\"observed_actions\":[],\"visual_moments\":[{\"moment_id\":\"M1\",\"utility_class\":\"reaction\",\"visual_strength\":\"useful\",\"moment_kind\":\"reaction\",\"action_completeness\":\"false\",\"moment_usability\":\"usable\",\"asset_window_complete\":\"true\",\"visual_context_dependency\":\"low\",\"start_frame\":2701,\"end_frame_exclusive\":3000,\"beginning_sample_id\":\"SAMPLE_01\",\"development_sample_ids\":[\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"],\"completion_sample_id\":null,\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"],\"continuity\":\"supported\",\"reuse_key\":\"close reaction of woman in patterned wrap facing seated conversation partner\"},{\"moment_id\":\"M2\",\"utility_class\":\"conversation_scene\",\"visual_strength\":\"useful\",\"moment_kind\":\"composition\",\"action_completeness\":\"false\",\"moment_usability\":\"usable\",\"asset_window_complete\":\"true\",\"visual_context_dependency\":\"low\",\"start_frame\":3000,\"end_frame_exclusive\":3119,\"beginning_sample_id\":\"SAMPLE_06\",\"development_sample_ids\":[\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"],\"completion_sample_id\":null,\"sample_ids\":[\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\"],\"continuity\":\"supported\",\"reuse_key\":\"two seated women together in beach conversational two-shot\"}],\"visual_assessment_complete\":true,\"narrative_context_dependency\":\"high\",\"visually_reusable\":\"true\",\"visual_moment_type\":\"reaction\",\"sustained_state\":\"true\",\"utility_assessments\":[{\"utility_class\":\"conversation_scene\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_06\",\"SAMPLE_08\",\"SAMPLE_10\"]},{\"utility_class\":\"therapy_or_session\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"discussion_or_argument\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"meditation_or_stillness\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"reaction\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"]},{\"utility_class\":\"sustained_emotional_state\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"]},{\"utility_class\":\"physical_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"nonverbal_interaction\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\"]},{\"utility_class\":\"walking_or_movement\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"concrete_action\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"object_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"useful_state\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_08\",\"SAMPLE_10\"]},{\"utility_class\":\"environment_or_composition\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_06\",\"SAMPLE_08\",\"SAMPLE_10\"]},{\"utility_class\":\"establishing_visual\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_06\",\"SAMPLE_08\",\"SAMPLE_10\"]}],\"confidence\":0.91,\"evidence_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\"]}",
+          "{\"event_id\":\"VE_fddbf5f0841708fa\",\"represented_shot_ids\":[\"FULL_SHOT_0030\",\"FULL_SHOT_0031\"],\"people_count\":\"2_plus\",\"visible_person_ids\":[\"FULL_SHOT_0030:P1\",\"FULL_SHOT_0030:P3\",\"FULL_SHOT_0031:P5\",\"FULL_SHOT_0031:P6\",\"FULL_SHOT_0031:P9\",\"FULL_SHOT_0031:P11\"],\"action_evidence_ids\":[],\"object_evidence_ids\":[],\"visible_states\":[\"Two women sit close together in a beach conversation; one speaks and the other watches.\",\"A wider shot shows several people seated or standing on the beach beside a volleyball net.\"],\"movement\":\"present\",\"physical_interactions\":[],\"visible_reactions\":[],\"conversation_present\":\"true\",\"conversation_visual_signal\":\"generic_dialogue_only\",\"visual_utility_kind\":\"generic_dialogue_only\",\"action_or_moment_complete\":\"unclear\",\"context_dependency\":\"low\",\"technical_observations\":{\"title_card\":false,\"credits\":false,\"logo\":false,\"dominant_text\":false,\"black_or_empty\":false,\"corrupt_or_unusable\":false},\"shot_focus_plan\":[],\"moment_status\":\"reusable_state\",\"temporal_support_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\"],\"visual_actions\":[],\"observed_actions\":[],\"visual_moments\":[{\"moment_id\":\"M1\",\"utility_class\":\"conversation_scene\",\"visual_strength\":\"useful\",\"moment_kind\":\"sustained_state\",\"action_completeness\":\"false\",\"moment_usability\":\"usable\",\"asset_window_complete\":\"true\",\"visual_context_dependency\":\"low\",\"start_frame\":3119,\"end_frame_exclusive\":3240,\"beginning_sample_id\":\"SAMPLE_01\",\"development_sample_ids\":[\"SAMPLE_02\"],\"completion_sample_id\":null,\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\"],\"continuity\":\"supported\",\"reuse_key\":\"two women seated together in close beach conversation\"},{\"moment_id\":\"M2\",\"utility_class\":\"environment_or_composition\",\"visual_strength\":\"useful\",\"moment_kind\":\"composition\",\"action_completeness\":\"false\",\"moment_usability\":\"usable\",\"asset_window_complete\":\"true\",\"visual_context_dependency\":\"low\",\"start_frame\":3240,\"end_frame_exclusive\":3308,\"beginning_sample_id\":\"SAMPLE_04\",\"development_sample_ids\":[\"SAMPLE_05\"],\"completion_sample_id\":null,\"sample_ids\":[\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\"],\"continuity\":\"supported\",\"reuse_key\":\"beachgoers gathered beside beach volleyball net\"}],\"visual_assessment_complete\":true,\"narrative_context_dependency\":\"high\",\"visually_reusable\":\"true\",\"visual_moment_type\":\"sustained_state\",\"sustained_state\":\"true\",\"utility_assessments\":[{\"utility_class\":\"conversation_scene\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\"]},{\"utility_class\":\"therapy_or_session\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"discussion_or_argument\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"meditation_or_stillness\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"reaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"sustained_emotional_state\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"physical_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"nonverbal_interaction\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\"]},{\"utility_class\":\"walking_or_movement\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\"]},{\"utility_class\":\"concrete_action\",\"assessment\":\"unclear\",\"sample_ids\":[\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\"]},{\"utility_class\":\"object_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"useful_state\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\"]},{\"utility_class\":\"environment_or_composition\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\"]},{\"utility_class\":\"establishing_visual\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\"]}],\"confidence\":0.89,\"evidence_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\"]}",
+          "{\"event_id\":\"VE_3666fcaafc03e618\",\"represented_shot_ids\":[\"FULL_SHOT_0032\",\"FULL_SHOT_0033\",\"FULL_SHOT_0034\"],\"people_count\":\"2_plus\",\"visible_person_ids\":[\"FULL_SHOT_0032:P2\",\"FULL_SHOT_0032:P4\",\"FULL_SHOT_0033:P2\",\"FULL_SHOT_0033:P3\",\"FULL_SHOT_0034:P2\",\"FULL_SHOT_0034:P4\"],\"action_evidence_ids\":[],\"object_evidence_ids\":[],\"visible_states\":[\"Two women sit facing each other on the beach; one uses expressive hand gestures while speaking.\",\"A separate wider view shows people standing near a beach volleyball net; another close beach view returns to the two women.\"],\"movement\":\"present\",\"physical_interactions\":[],\"visible_reactions\":[],\"conversation_present\":\"true\",\"conversation_visual_signal\":\"strong_body_language\",\"visual_utility_kind\":\"strong_nonverbal_interaction\",\"action_or_moment_complete\":\"unclear\",\"context_dependency\":\"low\",\"technical_observations\":{\"title_card\":false,\"credits\":false,\"logo\":false,\"dominant_text\":false,\"black_or_empty\":false,\"corrupt_or_unusable\":false},\"shot_focus_plan\":[],\"moment_status\":\"reusable_state\",\"temporal_support_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\"],\"visual_actions\":[],\"observed_actions\":[],\"visual_moments\":[{\"moment_id\":\"M1\",\"utility_class\":\"conversation_scene\",\"visual_strength\":\"useful\",\"moment_kind\":\"sustained_state\",\"action_completeness\":\"false\",\"moment_usability\":\"usable\",\"asset_window_complete\":\"true\",\"visual_context_dependency\":\"low\",\"start_frame\":3308,\"end_frame_exclusive\":3583,\"beginning_sample_id\":\"SAMPLE_01\",\"development_sample_ids\":[\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\"],\"completion_sample_id\":null,\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\"],\"continuity\":\"supported\",\"reuse_key\":\"two seated women in close beach conversation with expressive hand gestures\"},{\"moment_id\":\"M2\",\"utility_class\":\"environment_or_composition\",\"visual_strength\":\"useful\",\"moment_kind\":\"composition\",\"action_completeness\":\"false\",\"moment_usability\":\"usable\",\"asset_window_complete\":\"true\",\"visual_context_dependency\":\"low\",\"start_frame\":3583,\"end_frame_exclusive\":3631,\"beginning_sample_id\":\"SAMPLE_06\",\"development_sample_ids\":[\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\"],\"completion_sample_id\":null,\"sample_ids\":[\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\"],\"continuity\":\"supported\",\"reuse_key\":\"beach volleyball group and net in wide view\"},{\"moment_id\":\"M3\",\"utility_class\":\"conversation_scene\",\"visual_strength\":\"useful\",\"moment_kind\":\"sustained_state\",\"action_completeness\":\"false\",\"moment_usability\":\"usable\",\"asset_window_complete\":\"true\",\"visual_context_dependency\":\"low\",\"start_frame\":3631,\"end_frame_exclusive\":3685,\"beginning_sample_id\":\"SAMPLE_11\",\"development_sample_ids\":[\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\"],\"completion_sample_id\":null,\"sample_ids\":[\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\"],\"continuity\":\"supported\",\"reuse_key\":\"two seated women in beach conversation, close shared framing\"}],\"visual_assessment_complete\":true,\"narrative_context_dependency\":\"high\",\"visually_reusable\":\"true\",\"visual_moment_type\":\"sustained_state\",\"sustained_state\":\"true\",\"utility_assessments\":[{\"utility_class\":\"conversation_scene\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\"]},{\"utility_class\":\"therapy_or_session\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"discussion_or_argument\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"meditation_or_stillness\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"reaction\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_03\",\"SAMPLE_05\",\"SAMPLE_08\",\"SAMPLE_10\",\"SAMPLE_13\",\"SAMPLE_15\"]},{\"utility_class\":\"sustained_emotional_state\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"physical_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"nonverbal_interaction\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\"]},{\"utility_class\":\"walking_or_movement\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\"]},{\"utility_class\":\"concrete_action\",\"assessment\":\"weak\",\"sample_ids\":[\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\"]},{\"utility_class\":\"object_interaction\",\"assessment\":\"absent\",\"sample_ids\":[]},{\"utility_class\":\"useful_state\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\"]},{\"utility_class\":\"environment_or_composition\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\"]},{\"utility_class\":\"establishing_visual\",\"assessment\":\"useful\",\"sample_ids\":[\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\"]}],\"confidence\":0.91,\"evidence_sample_ids\":[\"SAMPLE_01\",\"SAMPLE_02\",\"SAMPLE_03\",\"SAMPLE_04\",\"SAMPLE_05\",\"SAMPLE_06\",\"SAMPLE_07\",\"SAMPLE_08\",\"SAMPLE_09\",\"SAMPLE_10\",\"SAMPLE_11\",\"SAMPLE_12\",\"SAMPLE_13\",\"SAMPLE_14\",\"SAMPLE_15\"]}"
+        ]
+      },
+      "status": "RECEIVED",
+      "usage": {
+        "cached_tokens": 0,
+        "prompt_tokens": 48757,
+        "response_tokens": 9886,
+        "thinking_tokens": 0,
+        "total_tokens": 58643
+      }
+    },
+    {
+      "failure": {
+        "attempts": 1,
+        "error_code": null,
+        "http_status": null,
+        "reason": "timeout",
+        "retryable": true
+      },
+      "identity": {
+        "batch_schema_version": "visual_utility_batch_v1",
+        "evidence_profile": "temporal_evidence_v2",
+        "model": "gpt-6-luna",
+        "ordered_event_input_fingerprints": [
+          "3748e1a77c1a819da7fb7f872303a52220859a0d767dd2433bccaab34142aa83",
+          "6c6db257a8a04c888e7acdfb0df0f1426e8498188f954c6ca664137bd13d7c9f",
+          "90bd9297d391c9be53b9935df4b05ae2d1012e32ee04a133a33ec7c460fa75fc",
+          "eb73ca6d4d86db43fff11d33cea023dfe52b2e02862bb280fe58fd100c907299",
+          "fd728b28264699550b889f0a44a3927e70e38eb545386bc1d2d024fb5c33e888",
+          "e786e941ff7f575f66ee736a31a80eff00b942fdae4374d2c5b4f5f60944a10b",
+          "d16199bd15731467cc798827d030dccdab456e4648d6962c7f2c806c9ee09857",
+          "5773d5d985d9fa032839dc8c5d50420f3853b7c2cac2696ee036d9c006368ffb"
+        ],
+        "prompt_version": "visual_utility_batch_prompt_v1",
+        "provider": "openai",
+        "schema_version": "visual_utility_observation_v1"
+      },
+      "request_id": "d19cd87c20d37be9c1478009b0afa79372cdbb1966e685abe53cadb0f73829ce-1",
+      "requested_event_ids": [
+        "VE_7103dc3ef60622a0",
+        "VE_3dc28f49d13b80fe",
+        "VE_b646a9e68d066cda",
+        "VE_bc2aac6ceac6f3ab",
+        "VE_cdf813c6881e8db6",
+        "VE_4cfb1235b5661a07",
+        "VE_c83a7eb2001ac375",
+        "VE_4952606c4f5e872c"
+      ],
+      "status": "TRANSPORT_DEFERRED"
+    }
+  ]
+}
